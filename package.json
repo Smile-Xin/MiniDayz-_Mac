@@ -1,0 +1,44 @@
+{
+  "name": "mdz-launcher-mac",
+  "productName": "MDZ Launcher",
+  "version": "1.0.4",
+  "description": "Mini DAYZ 多版本启动器（macOS 移植版）：版本导入与切换、快捷启动、分辨率与播放方式配置、按键映射校准、存档导出导入与备份",
+  "author": "QCHAI秋柴 (original) · macOS port",
+  "license": "MIT",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "MDZ_SMOKE=1 electron .",
+    "pack:mac": "electron-builder --mac dir --arm64",
+    "dist:mac": "electron-builder --mac dmg --arm64"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  },
+  "build": {
+    "appId": "cn.mdz.launcher.mac",
+    "productName": "MDZ Launcher",
+    "directories": { "output": "dist" },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "versions", "to": "versions" },
+      { "from": "lan", "to": "lan" }
+    ],
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["arm64"] }],
+      "category": "public.app-category.games",
+      "darkModeSupport": true,
+      "identity": null
+    }
+  }
+}

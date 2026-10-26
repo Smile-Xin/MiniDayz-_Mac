@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>MINIDAYZ Launcher</title>
+<!-- v0.6.20：iOS「添加到主屏幕」PWA 支持——从主屏图标启动时以独立模式全屏运行（无 Safari 地址栏）；
+     apple-touch-icon 用站点 logo（用户图标）；status-bar-style 让状态栏区域透明与页面同色 -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="MINIDAYZ Launcher" />
+<link rel="apple-touch-icon" href="logo.png?v=20261117a" />
+<script>
+// 首屏前应用主题（v1.0.41：auto 解析为实际深浅，避免安卓 WebView 纯 CSS media 不跟随；
+// v1.0.42：读值剥引号清洗——历史脏值曾被 JSON.stringify 写入带引号 "auto"，直接 setAttribute 会落非法值）
+try {
+  var __t0 = 'auto';
+  var __raw = localStorage.getItem('mdz-theme');
+  if (__raw) {
+    __raw = String(__raw).trim();
+    while (__raw.length >= 2 && __raw.charAt(0) === '"' && __raw.charAt(__raw.length - 1) === '"') {
+      __raw = __raw.slice(1, -1).trim();
+    }
+    if (__raw === 'light' || __raw === 'dark' || __raw === 'auto') __t0 = __raw;
+  }
+  document.documentElement.setAttribute('data-theme', __t0 === 'auto'
+    ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
+    : __t0);
+} catch (e) {}
+</script>
+<!-- 可选：mdz-config.js（在此文件之前引入）——部署后可随时改，无需重新打包：
+     window.__mdzConfig = {
+       versionsRoot: '/games/',                    // 版本目录根（默认 <本站目录>/versions/）
+       title: 'MINIDAYZ Launcher',                 // 顶栏标题（默认见 index.html）
+       subtitle: '在线的MDZ多版本启动器',
+       logo: 'logo.png?v=20261117a',                           // 顶栏 Logo（默认 logo.png，放启动器目录即可替换）
+       help: { url: 'https://moyu-camp.info/archives/minidayz-help' },   // 侧边栏「帮助」跳转链接（默认值，可改）
+       about: { text: '自定义关于文本', links: [{ label: '我的文章', url: 'https://...' }],
+                moreUrl: 'https://moyu-camp.info/archives/minidayz-launcher' }  // 「了解更多」按钮链接（默认值，可改）
+     }; -->
+<link rel="stylesheet" href="launcher.css?v=20261116a" />
+</head>
+<body>
+<div class="app">
+  <!-- 手机端侧边栏遮罩（顶栏下方） -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
+  <!-- 顶部栏：永远置顶 -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="logo" id="brand-logo">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12h4M8 10v4"/><path d="M15 11h.01M18 13h.01"/><path d="M17.32 5H6.68a4 4 0 0 0-3.98 3.59c-.01.05-.01.1-.02.15C2.6 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.41-1.41A2 2 0 0 1 9.83 16h4.34a2 2 0 0 1 1.42.59L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.54-.6-6.58-.68-7.26-.01-.05-.01-.1-.02-.15A4 4 0 0 0 17.32 5z"/></svg>
+      </div>
+      <div class="topbar-title">
+        <strong id="brand-title">MINIDAYZ Launcher</strong>
+        <span id="brand-subtitle">在线的MDZ多版本启动器</span>
+      </div>
+    </div>
+    <button id="btn-menu" class="btn-mobile-only topbar-menu" title="菜单"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  </header>
+
+  <div class="main">
+
+  <aside class="sidebar">
+    <nav class="side-nav">
+      <button class="nav-item active" data-view="versions"><span class="nav-ico"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 4 20 12 6 20" fill="currentColor" stroke="none"/></svg></span>游戏启动</button>
+      <button class="nav-item" data-view="saves"><span class="nav-ico"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg></span>存档管理</button>
+      <button class="nav-item" data-view="transfer" title="存档传输：手机直装游戏包把存档发到电脑"><span class="nav-ico"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><mask id="mdzIcoTransferCut" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect x="0" y="0" width="24" height="24" fill="#fff"/><circle cx="18.2" cy="18.4" r="5.6" fill="#000"/></mask></defs><g mask="url(#mdzIcoTransferCut)"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></g><path d="M14.6 18.4h6"/><polyline points="18 15.7 20.6 18.4 18 21.1"/></svg></span>存档传输</button>
+      <button class="nav-item" data-view="lan" title="多人联机：服务器（信令）/ 客户端分发 / 房间创建程序"><span class="nav-ico"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="16.5" x2="7.01" y2="16.5"/></svg></span>联机配置</button>
+      <button id="btn-dl-game" class="nav-item" title="下载游戏"><span class="nav-ico"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>下载游戏</button>
+      <button class="nav-item" data-view="settings"><span class="nav-ico"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>设置</button>
+      <button id="btn-help" class="nav-item" title="帮助"><span class="nav-ico"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span>帮助</button>
+    </nav>
+    <div class="side-foot">
+      <button id="theme-toggle" class="theme-btn"><span class="nav-ico" id="theme-ico"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><span id="theme-label">跟随系统</span></button>
+      <span class="muted ver">web v1.0.33</span>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <!-- 版本库 -->
+    <section id="view-versions" class="view active">
+      <!-- v0.4.8：「版本信息」标题已移到详情窗口顶部栏（renderDetail 生成） -->
+
+      <div id="detail-panel" class="detail-panel">
+        <div class="detail-empty">正在加载版本清单…</div>
+      </div>
+
+      <!-- v0.6.56：快捷启动块（最近启动 + 置顶列表；无最近/置顶时隐藏） -->
+      <div id="quick-launch" class="quick-launch hidden"></div>
+
+      <!-- 内嵌播放器（与详情页同一区块，开始游戏时切换为游戏画面） -->
+      <div id="embed-player" class="embed-player hidden">
+        <div class="player-bar">
+          <button id="btn-embed-close" title="关闭"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg><span>关闭</span></button>
+          <span id="embed-title" class="player-title"></span>
+          <span class="player-modes">
+            <span class="pl-group">
+              <select id="embed-res" title="分辨率（改动会重启游戏）"></select>
+              <span id="embed-res-custom" class="player-res-custom hidden">
+                <input id="embed-res-w" type="number" min="320" max="7680" />
+                <span>×</span>
+                <input id="embed-res-h" type="number" min="240" max="4320" />
+                <button id="embed-res-apply">应用</button>
+              </span>
+            </span>
+            <button id="btn-embed-fs" title="全屏/退出全屏"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg><span>全屏</span></button>
+          </span>
+        </div>
+        <div id="embed-stage" class="player-stage"><div id="embed-wrap"><iframe id="embed-frame" class="player-frame"></iframe></div></div>
+      </div>
+      <div class="library-head">
+        <h2>版本列表 <span id="lib-count" class="muted"></span></h2>
+        <div class="lib-tools">
+          <input id="lib-search" class="lib-search" type="search" placeholder="搜索版本…" autocomplete="off" />
+          <button id="btn-refresh" title="刷新"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+          <button id="view-toggle-grid" class="view-mode" title="封面网格"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+          <button id="view-toggle-list" class="view-mode" title="列表"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+        </div>
+      </div>
+      <div id="versions" class="cards grid"></div>
+      <p id="empty-tip" class="muted empty-tip hidden">还没有版本（未找到 versions.json 或版本目录）。</p>
+    </section>
+
+    <!-- 存档管理 -->
+    <section id="view-saves" class="view">
+      <div class="view-head"><h2>存档管理</h2></div>
+      <p class="muted view-tip">导出 / 导入各版本的 IndexedDB 存档（浏览器本地持久保存，与 PC 启动器格式互通）。支持搜索与分页。</p>
+      <div class="save-tools">
+        <span id="save-count" class="muted save-count"></span>
+        <input id="save-search" class="save-search" type="search" placeholder="搜索版本名 / 版本号 / ID…" autocomplete="off" />
+        <button id="btn-save-collapse" class="save-tool-btn" title="收起全部存档卡（含备份子列表）">折叠全部</button>
+        <button id="btn-save-expand" class="save-tool-btn" title="展开有存档或有备份的卡（无备份时不展开备份子列表）">展开列表</button>
+      </div>
+      <div id="save-list" class="cards"></div>
+    </section>
+
+    <section id="view-transfer" class="view">
+          <div class="view-head"><h2>存档传输</h2></div>
+          <p class="muted view-tip">给「直接装到手机上的游戏包」用的存档通道：这里开一个局域网服务（PC 上由启动器主进程常驻），游戏里注入的「存档桥」填下面显示的地址，就能把存档发过来；收到的存档可以直接导出成文件，或导入到某个版本。导出格式与「存档管理」互通。</p>
+          <div class="settings-card">
+            <div class="tr-row">
+              <span class="tr-lab">服务状态</span>
+              <span class="tr-ctl"><span id="transfer-state" class="muted">未启动</span>
+                <button id="btn-transfer-start" class="tr-btn primary">启动服务</button>
+                <button id="btn-transfer-stop" class="tr-btn">停止</button></span>
+            </div>
+            <!-- v1.0.67：连通情况 = 服务端真实收到的请求（判断「游戏那边到底有没有连上来」只看这一行） -->
+            <div class="tr-row">
+              <span class="tr-lab">连通情况</span>
+              <span class="tr-ctl"><span id="transfer-conn" class="muted">—</span></span>
+            </div>
+            <div class="tr-row">
+              <span class="tr-lab">端口</span>
+              <span class="tr-ctl"><input id="transfer-port" class="tr-input" type="number" min="1" max="65535" placeholder="8090（默认）" /></span>
+            </div>
+            <div class="tr-row">
+              <span class="tr-lab">配对码</span>
+              <span class="tr-ctl"><input id="transfer-token" class="tr-input" type="text" placeholder="可留空（建议设 4 位）" /></span>
+            </div>
+            <div class="tr-row">
+              <span class="tr-lab">游戏里填</span>
+              <span class="tr-ctl">
+                <code id="transfer-url" class="transfer-url">（先点上面的「启动服务」，这里会显示游戏里要填的地址）</code>
+                <button id="btn-transfer-copy-lan" class="tr-btn">复制局域网地址</button>
+                <button id="btn-transfer-copy-local" class="tr-btn">复制本机地址</button>
+              </span>
+            </div>
+            <div class="tr-row">
+              <span class="tr-lab"></span>
+              <span class="tr-ctl"><span class="muted">同一 Wi-Fi 用上面的地址；本机（手机也在这台电脑上）用 http://127.0.0.1:端口</span></span>
+            </div>
+          </div>
+          <div id="transfer-list" class="cards"></div>
+          <p id="transfer-empty" class="muted empty-tip hidden">还没有收到存档。手机游戏里存一次档，再用游戏里的「存档桥」发送过来。</p>
+          <div class="view-head tr-loghead"><h2>服务日志</h2></div>
+          <pre id="transfer-log" class="transfer-log"></pre>
+        </section>
+
+    <!-- 联机配置（v1.0.7）：服务器（信令）/ 客户端分发 / 房间创建程序 —— 内容由 launcher.js 的 renderLanPage() 填充 -->
+    <section id="view-lan" class="view">
+      <div class="view-head"><h2>联机配置</h2></div>
+      <p class="muted view-tip">多人联机三件套：服务器（信令）／客户端分发（把游戏发给别人）／房间创建程序（建房）。房主开前两个 + 建房程序；玩家只需要浏览器打开分发地址。</p>
+      <div id="lan-panel"></div>
+    </section>
+
+    <!-- 设置 -->
+    <section id="view-settings" class="view">
+      <div class="view-head"><h2>设置</h2></div>
+      <div class="settings-card">
+        <h4>外观</h4>
+        <div class="row" id="theme-row">
+          <label><input type="radio" name="theme" value="light" /> 浅色</label>
+          <label><input type="radio" name="theme" value="dark" /> 深色</label>
+          <label><input type="radio" name="theme" value="auto" /> 跟随系统</label>
+        </div>
+      </div>
+      <div class="settings-card">
+        <h4>存档库（诊断）</h4>
+        <p class="muted settings-tip">列出本浏览器该站点所有 IndexedDB 库（排查游戏读取 / 导入写入的库不一致）；结果直接显示在本卡片内，不再占用存档列表位置。</p>
+        <button id="btn-dbs" class="settings-btn" title="列出本浏览器该站点所有 IndexedDB 库（排查存档问题用）">查看存档库</button>
+        <div id="db-list-host"></div>
+      </div>
+      <div class="settings-card" id="settings-export-card">
+        <h4>静态部署清单</h4>
+        <p class="muted settings-tip">在 PHP 环境（小皮面板 / Apache / nginx+PHP 等）部署时：添加/删除版本后点下方按钮，生成最新 versions.json 并下载；把该文件与新增的版本目录上传到纯静态托管（如 Halo 静态插件）覆盖即可。纯静态托管环境本功能不可用（不会显示）。</p>
+        <button id="btn-export-manifest" class="settings-btn">生成 versions.json（静态部署用）</button>
+      </div>
+      <div class="settings-card">
+        <h4>关于</h4>
+        <div id="about-content"></div>
+      </div>
+    </section>
+
+  </main>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<input type="file" id="file-import" accept=".json" class="hidden" />
+
+<script src="save-manager.js?v=20261116a"></script>
+<script src="pc-adapter.js?v=1.0.3"></script>
+<script src="launcher.js?v=20261120a"></script>
+</body>
+</html>

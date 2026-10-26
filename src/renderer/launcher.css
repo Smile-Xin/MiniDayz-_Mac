@@ -1,0 +1,1098 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ===== 主题变量（黑白灰单色系；浅色默认） ===== */
+:root {
+  --bg: #f2f3f5;
+  --sidebar: #e9eaed;
+  --panel: #ffffff;
+  --panel-2: #f0f1f3;
+  --border: #dcdde1;
+  --text: #1b1d21;
+  --muted: #6f737b;
+  --accent: #26292e;          /* 主交互色：近黑 */
+  --accent-2: #555a63;
+  --accent-text: #ffffff;
+  --green: #383c42;
+  --danger: #565b64;
+  --shadow: 0 10px 28px rgba(20, 22, 26, .10);
+  --glow: rgba(38, 41, 46, .10);
+  --bar-h: 57px; /* 顶部栏统一高度：详情窗口 .detail-window-bar = 游戏内嵌 .player-bar（v0.4.6；控件32px+padding24px+border1px） */
+}
+/* 滚动条槽位常驻（v0.4.6）：滚动条出现/消失不影响内容宽度，切换画面时窗口不左右跳动 */
+html { scrollbar-gutter: auto; scrollbar-width: none; } /* v0.6.8：滚动条不占位——隐藏系统滚动条（页面宽度恒定、不跳动、无空块），滚动靠滚轮/触摸板 */
+html::-webkit-scrollbar { width: 0; height: 0; }
+html[data-theme="dark"] {
+  --bg: #0f1012;
+  --sidebar: #151619;
+  --panel: #1a1c20;
+  --panel-2: #202227;
+  --border: #2c2e34;
+  --text: #eaecf0;
+  --muted: #8d919a;
+  --accent: #e9ebf0;          /* 主交互色：近白 */
+  --accent-2: #9aa0aa;
+  --accent-text: #17181b;
+  --green: #cdd1d8;
+  --danger: #aab0ba;
+  --shadow: 0 10px 28px rgba(0, 0, 0, .45);
+  --glow: rgba(233, 235, 240, .12);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="auto"] {
+    --bg: #0f1012;
+    --sidebar: #151619;
+    --panel: #1a1c20;
+    --panel-2: #202227;
+    --border: #2c2e34;
+    --text: #eaecf0;
+    --muted: #8d919a;
+    --accent: #e9ebf0;
+    --accent-2: #9aa0aa;
+    --accent-text: #17181b;
+    --green: #cdd1d8;
+    --danger: #aab0ba;
+    --shadow: 0 10px 28px rgba(0, 0, 0, .45);
+    --glow: rgba(233, 235, 240, .12);
+  }
+}
+
+/* 主题切换平滑过渡（v0.4.2）：切换瞬间由 JS 给 <html> 加 .theme-switching，350ms 后移除。
+ * 仅切换期间启用过渡，避免黑白跳变；平时零开销。 */
+html.theme-switching,
+html.theme-switching * {
+  transition: background-color .3s ease, color .3s ease, border-color .3s ease, box-shadow .3s ease !important;
+}
+
+/* v1.0.1：移动浏览器点击反馈清理——隐藏点击高亮（Android 蓝色方块 / iOS 灰块）与触摸后的焦点框，
+   与安卓版观感一致；键盘导航（Tab）的 focus-visible 焦点框仍保留，不影响可访问性 */
+* { -webkit-tap-highlight-color: transparent; }
+*:focus:not(:focus-visible) { outline: none; }
+
+html, body { height: 100%; }
+body {
+  font: 14px/1.6 "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  color: var(--text); background: var(--bg);
+  transition: background .25s ease, color .25s ease;
+}
+
+/* ===== 统一图标（内联 SVG，stroke=currentColor） ===== */
+.ico { width: 18px; height: 18px; flex: none; display: inline-block; vertical-align: middle; }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ===== 布局：顶部栏 + 侧边栏 + 内容 ===== */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+/* 手机端侧边栏遮罩（桌面端隐藏） */
+.sidebar-backdrop { display: none; }
+
+/* 顶部栏：永远置顶，滚到底也在 */
+.topbar {
+  position: sticky; top: 0; z-index: 60; flex: none;
+  display: flex; align-items: center;
+  padding: 0 18px; background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+  /* v0.6.44→v0.8.4→v0.6.48：顶部栏 safe-area 避让——总高 = 56px + 顶部安全区
+     （iOS 主屏刘海 44px：背景延伸到状态栏区一体、内容 56px 在刘海下方，不被刘海/状态栏挡住；
+      桌面 safe-area=0 无影响）。安卓由 mdz-android 规则覆盖（height 56 !important + margin-top
+      由 --mdz-statusbar-h 控制，见下）。 */
+  padding-top: env(safe-area-inset-top);
+  height: calc(56px + env(safe-area-inset-top));
+}
+/* v0.8.6：安卓平台强制不做 safe-area 避让——原生 LAUNCHER 状态视口在状态栏下方（safe-area=0），
+   此处兜底防 OEM（ColorOS 等）强制 edge-to-edge 时顶部栏被切孔避让推下；iOS 主屏刘海仍需避让。
+   v0.8.7：!important 双保险——杜绝 safe-area 非零时 padding 溢出盒子把顶部栏内容挤下
+   v0.9.0 重写：状态栏区/摄像头区背景改为【页面 CSS 渲染】——body::before 固定背景层（--sidebar
+   顶部栏色，同帧同步、无原生窗口背景延迟/黑闪/「多余块」）；topbar 本体用 margin-top 避让
+   状态栏区（总高恒定 56px 贴状态栏，无溢出），sticky top 跟随 safe 避免滚动遮挡状态栏图标 */
+html.mdz-android body::before {
+  content: '';
+  position: fixed; top: 0; left: 0; right: 0;
+  /* v0.10.1：高度优先用原生推送的 --mdz-statusbar-h（旋转/游戏返回后可靠），
+     env() 兜底（原生未推送时） */
+  height: var(--mdz-statusbar-h, env(safe-area-inset-top, 0px));
+  background: var(--sidebar);
+  z-index: 59; /* topbar(60) 之下：状态栏区显示此层，topbar 区域显示 topbar 自身，同色一体 */
+  pointer-events: none;
+}
+html.mdz-android .topbar {
+  padding-top: 0 !important;
+  height: 56px !important;
+  margin-top: var(--mdz-statusbar-h, env(safe-area-inset-top, 0px));
+  top: var(--mdz-statusbar-h, env(safe-area-inset-top, 0px));
+}
+/* v0.6.51：安卓侧边栏 top 对齐安卓顶栏底（--mdz-statusbar-h + 56）——媒体查询内 web 端 50px 会被覆盖 */
+html.mdz-android .sidebar {
+  top: calc(var(--mdz-statusbar-h, env(safe-area-inset-top, 0px)) + 56px);
+}
+/* v0.9.5：安卓 edge-to-edge（视口恒全屏）时，页面底部内容避开导航栏（手势条）。
+   v1.0.3：高度用原生推送的 --mdz-navbar-h（导航栏透明，内容避让后导航栏区显示页面背景 --bg，
+   稳定不闪、不挡内容；不依赖 WebView env() 缓存） */
+html.mdz-android body { padding-bottom: var(--mdz-navbar-h, env(safe-area-inset-bottom, 0px)); }
+.topbar-brand { display: flex; align-items: center; gap: 10px; }
+.topbar-brand .logo {
+  width: 32px; height: 32px; border-radius: 8px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 3px 10px var(--glow);
+  color: var(--accent-text);
+}
+.topbar-brand .logo .ico { width: 20px; height: 20px; }
+.brand-logo-img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
+.topbar-title { min-width: 0; line-height: 1.3; }
+.topbar-title strong { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-title span { font-size: 11px; color: var(--muted); }
+/* 手机端侧边栏开关按钮（仅手机显示，靠右） */
+.topbar-menu {
+  margin-left: auto; width: 34px; height: 34px; padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+}
+.topbar-menu .ico { width: 18px; height: 18px; }
+/* v0.6.24：游戏播放期间禁用启动器页面选取/复制/长按菜单/触摸手势（openPlayer 加 body.game-active） */
+body.game-active { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+/* v1.0.6：手机端游戏播放时页面背景置黑——iOS 主屏/全屏未占满（safe-area 白边）不再露白 */
+body.game-black-bg { background: #000 !important; }
+html.game-black-bg { background: #000 !important; }
+/* v1.0.1-修复：手机端启动游戏、原生 Fullscreen 异步生效前的过渡帧盖黑（body.game-fs-fade）。
+   否则播放器会先以页面「内嵌」形态闪现一瞬（PC 端形态，iOS 16.4+/安卓原生全屏路径可见）。
+   全屏就绪（onFsEnter：原生 fullscreenchange 或伪全屏同步）即移除；z 取 10000：
+   高于页面内容/引导层(9999)、低于 ios-fs 伪全屏(2147483000)与横屏弹窗(2147483647)。 */
+body.game-fs-fade::after {
+  content: '';
+  position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+  background: #000; z-index: 10000; pointer-events: none;
+}
+body.game-active { touch-action: manipulation; }
+body.game-active .main { touch-action: none; }
+/* v0.6.20：iOS「添加到主屏幕」文本按钮（贴 #btn-menu 左侧，留 6px 间隔；仅 iOS 手机端显示） */
+.topbar .btn-ios-home {
+  margin-left: auto; margin-right: 6px; width: auto; height: 34px; padding: 0 10px;
+  font-size: 12px; white-space: nowrap;
+}
+.topbar .btn-ios-home .ico { width: 14px; height: 14px; }
+/* v0.6.20：iOS 添加到主屏幕引导弹窗 */
+.ios-home-hint { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.ios-home-hint-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); }
+.ios-home-hint-box {
+  position: relative; width: 86%; max-width: 340px; padding: 22px 20px;
+  border-radius: 14px; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
+}
+.ios-home-hint-box h4 { margin: 0 0 12px; font-size: 16px; }
+.ios-home-hint-box p { margin: 8px 0; font-size: 13.5px; line-height: 1.7; }
+.ios-home-hint-close { margin-top: 14px; width: 100%; height: 40px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; border: none; cursor: pointer; }
+.pl-group { display: flex; align-items: center; gap: 6px; }
+
+.main { display: flex; flex: 1; min-width: 0; }
+
+.sidebar {
+  /* v1.0.1：sticky → fixed——平板/桌面横屏滚动内容时侧边栏不再跟着上下滑动；
+     v1.0.2：top = 状态栏区 + 顶栏高度（侧边栏从顶栏下方开始，不盖顶栏；顶栏 z-index 60 最上） */
+  width: 220px; flex: none; position: fixed;
+  top: calc(var(--mdz-statusbar-h, env(safe-area-inset-top, 0px)) + 56px);
+  bottom: 0; height: auto;
+  display: flex; flex-direction: column;
+  background: var(--sidebar); border-right: 1px solid var(--border);
+  z-index: 30; /* 顶栏(60)之下、内容之上 */
+  transform: translateZ(0); /* v1.0.4：提升为合成层——滚动内容页时侧边栏不再重绘出 1px 闪烁 */
+}
+
+.side-nav { flex: 1; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; border: none; border-radius: 8px; background: transparent;
+  color: var(--muted); font-size: 13.5px; text-align: left; cursor: pointer;
+  transition: background .15s ease, color .15s ease;   /* v1.0.4：别用 all —— 切换时 box-shadow 的残余会留下 1px 黑渣 */
+  position: relative;
+}
+.nav-item:hover { background: var(--panel-2); color: var(--text); }
+a.nav-item { text-decoration: none; } /* v0.5.8：帮助按钮改为 <a> 后的下划线去除 */
+.nav-item.active {
+  background: var(--glow);
+  color: var(--text); font-weight: 600;
+  /* v1.0.4：激活指示改成左侧小圆条 ::before（原来 inset box-shadow 被 border-radius 裁出黑点/黑渣） */
+}
+.nav-item.active::before {
+  content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 18px; border-radius: 2px; background: var(--accent);
+}
+.nav-ico { width: 20px; text-align: center; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.nav-ico .ico { width: 16px; height: 16px; }
+
+.side-foot { padding: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.theme-btn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); color: var(--text); font-size: 13px; cursor: pointer;
+  transition: all .15s ease;
+}
+.theme-btn:hover { border-color: var(--accent); }
+.ver { align-self: flex-end; }
+
+/* ===== 内容区 ===== */
+.content { flex: 1; min-width: 0; padding: 24px 30px 70px; margin-left: 220px; /* v1.0.1：为固定侧边栏留位 */ }
+.view { display: none; animation: fade .18s ease; }
+.view.active { display: block; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.view-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.view-head h2, .view > h2, .library-head h2, .quick-launch-title {
+  font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+}
+.view-head h2::before, .view > h2::before, .library-head h2::before, .quick-launch-title::before {
+  content: ''; width: 4px; height: 16px; border-radius: 2px; background: var(--accent);
+}
+.view-tip { margin: 0 0 14px 12px; }
+.root-info { margin: 2px 0 14px 12px; }
+.empty-tip { padding: 40px 0; text-align: center; }
+
+.toolbar { display: flex; align-items: center; gap: 10px; }
+
+button {
+  padding: 8px 15px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 13px;
+  transition: all .15s ease;
+}
+button:hover { border-color: var(--accent); transform: translateY(-1px); }
+button:active { transform: translateY(0); }
+button.primary {
+  background: var(--accent); border-color: var(--accent);
+  color: var(--accent-text); font-weight: 600;
+  box-shadow: 0 4px 14px var(--glow);
+}
+button.primary:hover { filter: brightness(1.12); }
+button.danger { border-style: dashed; border-color: var(--danger); color: var(--danger); }
+button.danger:hover { background: var(--glow); }
+
+.muted { color: var(--muted); font-size: 12px; }
+.small { font-size: 12px; }
+.hidden { display: none !important; }
+
+/* ===== 上区块：版本详情 ===== */
+/* 【实验性布局（可能删除）】v0.4.6：详情改为浏览器窗口式——顶部栏 + 内容区，
+   顶部栏与游戏内嵌播放器 .player-bar 同尺寸，暂时不放任何内容 */
+.detail-panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  margin-bottom: 22px; box-shadow: var(--shadow);
+  min-height: 220px; overflow: hidden; padding: 0;
+}
+.detail-window { display: flex; flex-direction: column; width: 100%; }
+.detail-window-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px; background: var(--panel);
+  border-bottom: 1px solid var(--border); /* 与 .player-bar 同尺寸（高度/背景/分隔线） */
+  min-height: var(--bar-h); box-sizing: border-box; /* 高度与游戏内嵌顶栏一致 */
+}
+.detail-window-title {
+  font-size: 17px; font-weight: 700; color: var(--text); /* v0.5.0：加粗大字号，不做竖条装饰 */
+  display: flex; align-items: center; /* 左居中 */
+}
+.detail-window-body { display: flex; gap: 22px; align-items: flex-start; padding: 20px 22px; }
+.detail-empty {
+  width: 100%; text-align: center; color: var(--muted); padding: 60px 0;
+}
+.detail-left { width: 210px; flex: none; position: relative; }
+.detail-cover {
+  width: 100%; aspect-ratio: 2/3; border-radius: 8px; overflow: hidden; /* 竖版 3:2（高:宽） */
+  position: relative; background: var(--panel-2); border: 1px solid var(--border);
+}
+.detail-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.detail-cover .cover-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.detail-cover .cover-ph .ico { width: 52px; height: 52px; opacity: .5; }
+
+/* 封面下方：启动 + ⚙ 配置（宽度与封面齐平，圆角 8px） */
+.detail-btns { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: nowrap; }
+.btn-launch, .btn-more { display: flex; align-items: center; justify-content: center; }
+.btn-launch { flex: 1; height: 46px; border-radius: 8px; font-size: 15px; font-weight: 700; min-width: 0; }
+.btn-launch .ico { width: 18px; height: 18px; margin-right: 7px; }
+.btn-more { width: 48px; flex: none; height: 46px; border-radius: 8px; padding: 0; }
+.btn-more .ico { width: 18px; height: 18px; }
+/* v0.5.0：下载按钮（启动/配置下方，与封面同宽） */
+.btn-download {
+  width: 100%; height: 38px; margin-top: 8px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  font-size: 13px; cursor: pointer; transition: all .15s ease;
+}
+.btn-download .ico { width: 15px; height: 15px; }
+.btn-download:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 分页器（v0.4.6）：列表固定 10 个/页；网格按当前可视尺寸自动调整每页数量 */
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0 6px; }
+.pager button {
+  width: 34px; height: 34px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  cursor: pointer; transition: all .15s ease;
+}
+.pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.pager button:disabled { opacity: .4; cursor: default; }
+.pager .ico { width: 15px; height: 15px; }
+.pg-info { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.detail-info { flex: 1; min-width: 0; }
+.detail-info h3 { font-size: 21px; font-weight: 700; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.detail-info .badge {
+  display: inline-block; padding: 2px 9px; font-size: 11.5px; border-radius: 999px;
+  background: var(--glow); color: var(--accent); font-family: Consolas, monospace;
+}
+.dmeta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 26px; margin-top: 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); font-size: 12.5px; } /* meta 与截图/描述之间用虚线分隔 */
+.dmeta .dline { display: flex; gap: 10px; line-height: 2.05; min-width: 0; }
+.dmeta .dline span { width: 74px; flex: none; color: var(--muted); }
+.dmeta .dline b { font-weight: 500; color: var(--text); word-break: break-all; }
+.detail-hint { margin-top: 12px; color: var(--muted); font-size: 12px; } /* 描述紧贴截图下方，无分割线 */
+/* 截图（可选元数据）：横向缩略图，点击新窗口看大图；v0.4.2 分割线由上方 .dmeta 提供 */
+.shot-row { display: flex; gap: 8px; overflow-x: auto; margin-top: 12px; }
+.shot {
+  width: 150px; height: 84px; flex: none; object-fit: cover; cursor: pointer;
+  border-radius: 7px; border: 1px solid var(--border); background: var(--panel-2);
+  transition: all .15s ease;
+}
+.shot:hover { border-color: var(--accent); transform: translateY(-1px); }
+/* v0.6.3：截图点击 → 应用内全屏预览（替代 window.open，安卓 WebView 可用；×/遮罩/ESC 关闭） */
+.shot-preview { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.shot-preview-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, .88); }
+.shot-preview img { position: relative; max-width: 94vw; max-height: 94vh; object-fit: contain; border-radius: 8px; box-shadow: 0 8px 40px rgba(0, 0, 0, .6); }
+.shot-preview-close {
+  position: absolute; top: 14px; right: 14px; z-index: 2;
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: rgba(255, 255, 255, .14); color: #fff; font-size: 22px; line-height: 1;
+  border: 1px solid rgba(255, 255, 255, .25); cursor: pointer;
+}
+.shot-preview-close:hover { background: rgba(255, 255, 255, .26); }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.detail-res { margin-top: 16px; }
+
+/* v0.5.3：存档卡片——上下布局：亮顶栏（图标+名称/id+垃圾桶+折叠开关）；暗内容块（当前存档按钮排 + 备份列表）
+   参考系列折叠：槽行 = 子列表样式（暗背景 + 左侧 accent 竖线 + 缩进） */
+/* v0.5.5：选择器用 .card.save-card（0,2,0）压过 .card 基类的 padding:16px（此前同特异性后定义者胜出
+   → 卡片四周 16px 白边） */
+.card.save-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.save-card-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.save-card-title { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.save-card-title .avatar {
+  width: 34px; height: 34px; border-radius: 8px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--glow); color: var(--accent);
+}
+.save-card-title .avatar .ico { width: 18px; height: 18px; }
+.save-card-names { min-width: 0; }
+.save-card-names h3 { font-size: 14px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.save-card-names .badge { font-size: 11px; }
+.save-card-tools { display: flex; gap: 4px; flex: none; }
+.icon-btn {
+  width: 30px; height: 30px; padding: 0; border: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px; background: transparent; color: var(--muted);
+}
+.icon-btn:hover { background: var(--bg); color: var(--text); }
+.icon-btn.act-del-saves:hover { color: #e55; }
+.icon-btn .ico { width: 16px; height: 16px; }
+/* 折叠开关：展开=箭头朝下，折叠=朝右 */
+.act-toggle .ico { transition: transform .18s ease; transform: rotate(90deg); }
+.save-card.collapsed .act-toggle .ico { transform: rotate(0deg); }
+.save-card-body {
+  padding: 12px 14px;
+  background: var(--bg);
+}
+/* v0.6.59：配置弹窗「前往存档管理」定位的存档卡——版本列表同款 accent 选中框（边框 + 外发光） */
+.save-card.goto-focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.save-current { margin-bottom: 4px; }
+.save-block-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.save-block-title { font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: .5px; }
+.save-block-head .muted { font-size: 11px; }
+.save-slots-wrap { margin-top: 10px; }
+/* v0.5.4：备份列表单独折叠 */
+.slots-head { cursor: pointer; }
+.slot-fold { width: 22px; height: 22px; }
+.slot-fold .ico { transition: transform .18s ease; transform: rotate(90deg); width: 12px; height: 12px; }
+.save-slots-wrap.folded .slot-fold .ico { transform: rotate(0deg); }
+.save-slots-wrap.folded .save-slots { display: none; }
+.save-slots { display: flex; flex-direction: column; gap: 6px; }
+.slots-empty { font-size: 12px; margin: 4px 0; padding: 14px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; }
+/* 槽行：系列子列表样式——暗背景 + 左侧 accent 竖线 */
+.slot-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 0 8px 8px 0;
+  border-left: 3px solid var(--accent);
+  background: var(--panel-2);
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.slot-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot-info .muted { font-size: 11px; }
+.slot-btns { display: flex; gap: 4px; flex: none; }
+.slot-btns button {
+  width: 26px; height: 26px; padding: 0; border: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px; background: transparent; color: var(--muted);
+}
+.slot-btns button:hover { background: var(--bg); color: var(--text); }
+.slot-btns .slot-del:hover { color: #e55; }
+.slot-btns .ico { width: 14px; height: 14px; }
+/* v0.6.1：备份重命名行内输入框 */
+.slot-rename-input {
+  width: 100%; font-size: 13px; font-weight: 600; padding: 2px 6px;
+  border-radius: 6px; border: 1px solid var(--accent);
+  background: var(--bg); color: var(--text); outline: none; box-sizing: border-box;
+}
+/* v0.5.1：flex-wrap——空间足够时标题/工具左右排列，空间不够时工具自动换行（替代媒体查询强制上下排列，
+   平板等宽屏不再误判为上下布局） */
+/* ===== 下区块：库 ===== */
+/* v0.5.1：flex-wrap——空间足够时标题/工具左右排列，空间不够时工具自动换行（替代媒体查询强制上下排列，
+   平板等宽屏不再误判为上下布局） */
+.library-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 6px 0 14px; padding-top: 2px; }
+.lib-tools { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+.lib-tools button { display: inline-flex; align-items: center; justify-content: center; }
+.lib-tools .ico { width: 15px; height: 15px; }
+/* v0.5.0：版本搜索框 */
+.lib-search {
+  width: 150px; height: 32px; padding: 0 10px; border-radius: 8px; box-sizing: border-box;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  font-size: 12.5px; outline: none; transition: all .15s ease;
+}
+.lib-search:focus { border-color: var(--accent); background: var(--panel); width: 190px; }
+/* v0.6.80：存档管理页工具行（计数 + 搜索 + 折叠全部/展开列表）——整体靠右对齐 */
+.save-tools { display: flex; align-items: center; gap: 10px; margin: -2px 0 12px; flex-wrap: wrap; justify-content: flex-end; }
+.save-search {
+  width: 210px; height: 32px; padding: 0 10px; border-radius: 8px; box-sizing: border-box;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  font-size: 12.5px; outline: none; transition: all .15s ease;
+}
+.save-search:focus { border-color: var(--accent); background: var(--panel); width: 280px; }
+.save-count { font-size: 12px; white-space: nowrap; }
+.save-tool-btn { height: 32px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; white-space: nowrap; flex: none; }
+@media (max-width: 620px) { .save-search { width: 140px; } .save-search:focus { width: 180px; } }
+.view-mode { padding: 6px 13px; font-size: 12.5px; border-radius: 8px; }
+.view-mode.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+/* 封面网格（3:4 竖版，Steam 库风格） */
+.cards.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.cover-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; /* 与详情封面圆角一致 */
+  overflow: hidden; cursor: pointer; transition: all .18s ease;
+}
+.cover-card:hover { border-color: var(--muted); transform: translateY(-2px); box-shadow: var(--shadow); }
+.cover-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); } /* 选中边框加粗 */
+/* 网格卡片封面：比例由元数据 cardRatio 配置（JS inline aspect-ratio），图片 contain 完整显示（比例不符时留黑边） */
+.cover { position: relative; aspect-ratio: 3/4; overflow: hidden; background: #000; }
+.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+/* 封面左上角版本号角标 */
+.cover-badge {
+  position: absolute; top: 6px; left: 6px; z-index: 2;
+  max-width: calc(100% - 12px); padding: 2px 8px;
+  font-size: 10.5px; font-family: Consolas, monospace; line-height: 1.5;
+  color: #fff; background: rgba(0, 0, 0, .55); border-radius: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  backdrop-filter: blur(2px);
+}
+.cover-ph {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  /* v0.6.5：占位符统一深色渐变——不再用 var(--panel) 渐变（浅色主题下 panel 是白色 → 切换时「白一下」） */
+  background: linear-gradient(160deg, #23262d, #14161b);
+}
+.cover-ph .ico { width: 42px; height: 42px; opacity: .55; }
+.cover-info { padding: 6px 10px 7px; } /* 紧凑：只放版本名一行 */
+.cover-info .cn { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* 启动：卡片居中白色播放图标（hover 显示），非整块按钮 */
+.cover-card .launch-chip {
+  position: absolute; inset: 0; z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .18); cursor: pointer;
+  opacity: 0; transition: opacity .15s ease;
+}
+.cover-card .launch-chip .ico {
+  width: 54px; height: 54px; color: #fff; /* 抠白图标 */
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .55));
+}
+.cover-card:hover .launch-chip { opacity: 1; }
+
+/* 列表视图 */
+.cards.list { display: flex; flex-direction: column; gap: 8px; }
+/* v1.0.45：sortFirst 内置版（置顶块）与其余版本之间的虚线分隔 */
+.cards.list .list-first-sep { height: 0; border-top: 1.5px dashed var(--border); margin: 2px 0; opacity: .9; }
+.cards.list .list-row.list-first-row { margin-bottom: 0; }
+.list-row {
+  display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+  transition: all .15s ease;
+}
+.list-row:hover { border-color: var(--muted); }
+.list-row.selected { border-color: var(--accent); background: var(--panel-2); box-shadow: 0 0 0 2px var(--accent); } /* 选中边框加粗 */
+.lr-cover { position: relative; width: 46px; height: 46px; border-radius: 8px; overflow: hidden; flex: none; background: var(--panel-2); }
+.lr-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.lr-cover .cover-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.lr-cover .cover-ph .ico { width: 22px; height: 22px; opacity: .55; }
+.lr-info { flex: 1; min-width: 0; }
+.lr-info h4 { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lr-info span { font-size: 11.5px; color: var(--muted); font-family: Consolas, monospace; }
+.lr-play {
+  flex: none; height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 15px; box-sizing: border-box; /* 与 .lr-config 等高（v0.4.6 统一按钮大小） */
+}
+.lr-play .ico { width: 14px; height: 14px; }
+.lr-config {
+  flex: none; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 14px; border-radius: 8px; font-size: 12.5px; box-sizing: border-box;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text); cursor: pointer;
+  transition: all .15s ease;
+}
+.lr-config:hover { border-color: var(--accent); color: var(--accent); }
+/* v1.0.5：列表行按钮「图标化」= CSS 驱动（媒体查询实时生效：窗口缩到手机宽度立即切换，无需刷新/重渲染）
+ * 桌面（默认）：配置 = 纯文字（齿轮 display:none 不占位，观感同 v1.0.3）；启动 = 播放图标 + 文字
+ * 紧凑态：隐藏文字、显示齿轮、两按钮 40×40 仅图标；PC（Electron，html.mdz-pc）永不进入紧凑态
+ * 注：只作用于版本列表行按钮 .lr-rowbtn —— 系列行「展开/收起」（.lr-config.series-expand）不受影响 */
+.lr-rowbtn .lr-icon-compact { display: none; }
+@media (pointer: coarse), (max-width: 820px) {
+  html:not(.mdz-pc) .lr-rowbtn .lr-icon-compact { display: inline-block; }
+  html:not(.mdz-pc) .lr-rowbtn .lr-label { display: none; }
+  html:not(.mdz-pc) .lr-play.lr-rowbtn, html:not(.mdz-pc) .lr-config.lr-rowbtn { width: 40px; height: 40px; padding: 0; gap: 0; }
+  html:not(.mdz-pc) .lr-rowbtn .ico { width: 17px; height: 17px; }
+}
+html.mdz-android .lr-rowbtn .lr-icon-compact { display: inline-block; }
+html.mdz-android .lr-rowbtn .lr-label { display: none; }
+html.mdz-android .lr-play.lr-rowbtn, html.mdz-android .lr-config.lr-rowbtn { width: 40px; height: 40px; padding: 0; gap: 0; }
+html.mdz-android .lr-rowbtn .ico { width: 17px; height: 17px; }
+
+/* ===== 快捷启动（v0.6.56）：版本信息与版本列表之间；v0.6.57 父级卡；v0.6.58 上次游玩/置顶合一单卡；
+ *  v0.6.60 标题行 = 快捷启动（左）+ 展开/收起置顶列表按钮（右，布局同版本列表 library-head） ===== */
+.quick-launch { margin-bottom: 2px; }
+/* 标题行：flex space-between，标题 + 工具按钮一行（同 .library-head 布局） */
+.quick-launch-head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 6px 12px; margin: 0 0 10px;
+}
+.quick-launch-head .quick-launch-title { margin: 0; } /* 标题样式复用列表 h2（accent 竖条） */
+.quick-launch-tools { display: flex; gap: 6px; align-items: center; }
+/* 「展开置顶列表/收起置顶列表」按钮：与版本列表列表布局按钮（.view-mode）同风格 */
+.quick-launch .ql-toggle {
+  padding: 6px 13px; font-size: 12.5px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  cursor: pointer; transition: all .15s ease; white-space: nowrap;
+}
+.quick-launch .ql-toggle:hover { border-color: var(--accent); color: var(--accent); }
+/* 父级卡与版本列表 series-block 同款样式 */
+.quick-launch .series-block { margin-bottom: 0; }
+/* 父级头 = 主版本行：封面 + 版本信息 + 配置/启动按钮（展开/收起已移到标题行右侧 v0.6.60） */
+.quick-launch .ql-head { background: var(--panel); }
+/* v0.6.60（待用户确认方向）：有子列表的父级行悬浮不再变暗（覆盖 .series-head:hover 的 var(--bg)）——
+   父级行只是信息 + 配置/启动按钮，非展开热点；若需保留变暗反馈删除本行即可 */
+.quick-launch .ql-head:hover { background: var(--panel); }
+/* 父级行按钮与子行按钮风格对齐 */
+.quick-launch .ql-head .lr-config,
+.quick-launch .ql-head .lr-play { flex: none; }
+/* ===== 系列折叠（v0.6.3：整体卡片 + 子项缩进左边线 + 选中/展开 accent 选择框） ===== */
+.series-block {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden; /* 子行圆角/背景贴住卡片 */
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+/* 整体选择框：展开时 或 系列内有选中版本时 → accent 边框 + 高亮（父级头部不变暗） */
+.series-block.open,
+.series-block.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.series-head { border: none; border-radius: 0; background: transparent; }
+.series-head:hover { border-color: transparent; background: var(--bg); } /* v0.6.9：悬浮父级变暗（与子项目背景同色） */
+.series-head.selected { box-shadow: none; background: transparent; } /* 父级选中不变暗（选择框由整体块承担） */
+.series-expand { min-width: 64px; }
+.series-children {
+  display: flex; flex-direction: column;
+  /* v0.6.6：线左侧背景与子项目一致（暗色）——容器贴卡片左缘 + 背景 var(--bg)，
+     线用 ::before 画在 16px（对齐父级图标左边），padding-left 28px 保持子行位置不变。
+     v0.6.9：去掉上下 margin——之前 4px/6px 会露出卡片亮色（--panel），暗色背景现在完整覆盖子项目块 */
+  position: relative;
+  margin: 0;
+  padding-left: 28px;
+  background: var(--bg);
+}
+.series-children::before {
+  content: ''; position: absolute; left: 16px; top: 0; bottom: 0; width: 2px;
+  background: var(--border);
+}
+.series-children.hidden { display: none; }
+/* v0.6.4：子项目暗背景（区别于卡片面板色）；hover 变色；选中行提升层级，选中框不被相邻行悬浮背景遮挡。
+   v0.6.10：选中框改 outline 内描边（outline-offset:-2px）——不再用 box-shadow 外扩，避免选择框溢出到父级系列头。
+   v0.6.11：美化——柔和指示：accent 浅色背景 + 左侧 3px 圆角竖条（替代生硬的 outline 直角框） */
+.series-child-row { border: none; border-radius: 0; background: var(--bg); }
+.series-child-row:hover { background: var(--panel-2); }
+.series-child-row.selected {
+  position: relative; z-index: 1;
+  box-shadow: none; outline: none;
+  background: var(--glow); /* accent 浅色背景（柔和高亮） */
+}
+.series-child-row.selected::before {
+  content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 2px; background: var(--accent); /* 左侧指示条 */
+}
+/* 子行选中保留 accent 高亮框（list-row.selected 的 box-shadow 模拟边框） */
+
+/* ===== 通用配置弹窗（v0.4.6：整合更多菜单 + 列表配置；分类 + 左右布局） ===== */
+.config-dialog {
+  position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .55); z-index: 2147483647;
+}
+.config-dialog.hidden { display: none; }
+/* v0.4.9：滚动移到内容区 .cd-body（容器固定圆角，滚动条不溢出弹窗、更美观） */
+.config-box {
+  width: min(440px, 90vw); max-height: 84vh;
+  display: flex; flex-direction: column;
+  padding: 20px 22px; border-radius: 16px;
+  background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.cd-body { overflow-y: auto; min-height: 0; padding-right: 6px; scrollbar-gutter: stable; }
+.cd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex: none; }
+.cd-head h4 { font-size: 14.5px; margin: 0; }
+.cd-close {
+  border: none; background: none; color: var(--muted); font-size: 16px; cursor: pointer;
+  padding: 2px 8px; border-radius: 6px;
+}
+.cd-close:hover { color: var(--text); background: var(--panel-2); }
+/* 分类小标题 */
+.cd-group {
+  font-size: 11.5px; font-weight: 700; letter-spacing: .5px; color: var(--muted);
+  text-transform: uppercase; margin: 16px 0 8px; padding-bottom: 4px;
+  border-bottom: 1px dashed var(--border);
+}
+.cd-group:first-child { margin-top: 0; }
+/* 左右布局：左标签（固定宽）、右控件（撑满） */
+.cd-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.cd-row > span { font-size: 12.5px; color: var(--muted); flex: none; width: 92px; }
+/* v1.0.23：「左右黑边」这一行的容器不是 select —— 用 .cd-ctl 吃掉剩余宽度
+   （套 <span> 会被上面 92px 压死），左/右输入各自成组对齐；提示文字独占一行 */
+.cd-ctl { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cd-row .cd-ctl .res-select { flex: 1; min-width: 150px; }
+.bar-nums { display: inline-flex; align-items: center; gap: 10px; flex: none; }
+.bar-num { display: inline-flex; align-items: center; gap: 4px; }
+.bar-num-lab { font-size: 12.5px; color: var(--muted); }
+.bar-num input {
+  width: 56px; padding: 5px 6px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font-size: 12.5px; outline: none;
+}
+.bar-num input:focus { border-color: var(--accent); }
+.bar-num-unit { font-size: 12px; color: var(--muted); }
+.cd-row .res-select { flex: 1; min-width: 0; }
+.cd-body .res-row { margin-top: 4px; gap: 12px; } /* v0.6.7：gap 与 .cd-row 一致（12px）→ 播放方式/分辨率 select 等宽 */
+.cd-body .res-label { font-size: 12.5px; width: 92px; flex: none; }
+.cd-body .res-row .res-select { flex: 1; min-width: 0; }
+.cd-btn {
+  flex: 1; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text); font-size: 12.5px; cursor: pointer;
+  transition: all .15s ease;
+}
+.cd-btn .ico { width: 14px; height: 14px; }
+.cd-btn:hover { border-color: var(--accent); color: var(--accent); }
+.cd-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+.cd-val {
+  flex: 1; min-width: 0; font: 12px Consolas, monospace; color: var(--text);
+  text-align: right; word-break: break-all; user-select: text;
+}
+.cd-reset {
+  margin-top: 16px; width: 100%; padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+  font-size: 12px; cursor: pointer; transition: all .15s ease;
+}
+.cd-reset:hover { color: var(--danger); border-color: var(--danger); }
+.mobile-hidden { display: none !important; }
+
+/* ===== 分辨率控件 ===== */
+.res-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.res-label { font-size: 12px; color: var(--muted); }
+.res-select, .res-custom input {
+  padding: 5px 8px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font-size: 12.5px; cursor: pointer; outline: none;
+}
+.res-select:focus, .res-custom input:focus { border-color: var(--accent); }
+.res-custom { display: flex; align-items: center; gap: 6px; }
+.res-custom input { width: 76px; }
+.res-custom span { color: var(--muted); }
+.res-apply { padding: 5px 14px; font-size: 12.5px; }
+
+/* ===== 存档卡片 ===== */
+.cards:not(.grid):not(.list) { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+/* v0.5.4：存档管理列表单列铺满面板（无多列留白边距） */
+#save-list.cards { display: flex; flex-direction: column; gap: 12px; }
+#save-list .save-card { width: 100%; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+.card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.avatar {
+  width: 42px; height: 42px; border-radius: 10px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--glow); border: 1px solid var(--border);
+  color: var(--accent-2);
+}
+.avatar .ico { width: 20px; height: 20px; }
+.card-title { min-width: 0; }
+.card-title h3 { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .meta { font-size: 12px; color: var(--muted); margin: 4px 0 10px; line-height: 1.7; }
+.card .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.card .actions button { padding: 7px 12px; font-size: 12.5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.card .actions button .ico { width: 14px; height: 14px; }
+.save-card .actions button { flex: 1; min-width: 110px; }
+/* 存档库诊断列表 */
+.db-list { margin-bottom: 14px; }
+.db-list h4 { font-size: 13.5px; margin-bottom: 8px; }
+.db-list-pre {
+  font: 11.5px/1.7 Consolas, monospace; color: var(--muted);
+  white-space: pre-wrap; word-break: break-all;
+  background: var(--panel-2); border: 1px dashed var(--border);
+  border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto;
+}
+
+/* ===== 设置 ===== */
+.settings-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px; margin-bottom: 16px;
+  /* v1.0.7：与「版本信息」卡一致——宽度跟随窗口（原来固定 max-width:720px，窗口拉大后卡片不再变宽） */
+  max-width: none; width: 100%; box-sizing: border-box;
+}
+.settings-card h4 { font-size: 14px; margin-bottom: 12px; }
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.row label {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 7px 14px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--panel-2); transition: all .15s ease; font-size: 13px;
+}
+.row label:hover { border-color: var(--accent); }
+.row label:has(input:checked) { border-color: var(--accent); background: var(--glow); }
+.row input[type=radio] { accent-color: var(--accent); }
+.settings-tip { margin-top: 10px; }
+.about-links { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.about-link {
+  display: inline-flex; align-items: center; gap: 6px; color: var(--accent);
+  font-size: 13px; text-decoration: none; width: fit-content;
+}
+.about-link:hover { text-decoration: underline; }
+/* v0.6.9：关于「了解更多」按钮；v1.0.44：安卓并排「查看更新」按钮（flex gap 排布，web/PC 单按钮不受影响） */
+.about-more { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.about-more-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 18px; border-radius: 9px; font-size: 13px; text-decoration: none;
+  border: 1px solid var(--accent); background: var(--glow); color: var(--accent);
+  cursor: pointer; transition: all .15s ease;
+}
+.about-more-btn:hover { background: var(--accent); color: var(--accent-text); }
+/* v1.0.44：PC/web「查看更新」占位（链接待开放）——同按钮外观但禁用态 */
+.about-more-btn.disabled { opacity: .6; cursor: default; }
+.about-more-btn.disabled:hover { background: var(--glow); color: var(--accent); }
+.settings-btn {
+  margin-top: 14px; padding: 9px 18px; border-radius: 9px;
+  border: 1px solid var(--accent); background: var(--glow); color: var(--accent);
+  font-size: 13px; cursor: pointer; transition: all .15s ease;
+}
+.settings-btn:hover { background: var(--accent); color: var(--bg); }
+
+/* ===== 弹窗 ===== */
+.modal {
+  position: fixed; inset: 0; background: rgba(5, 7, 10, .55); z-index: 100;
+  display: flex; align-items: center; justify-content: center; backdrop-filter: blur(3px);
+}
+.modal-box {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  padding: 22px; width: 460px; max-width: 92vw; box-shadow: var(--shadow);
+  animation: pop .18s ease;
+}
+@keyframes pop { from { transform: scale(.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.modal-box h3 { margin-bottom: 14px; font-size: 16px; }
+.modal-box label { display: block; margin: 10px 0 4px; font-size: 12px; color: var(--muted); }
+.modal-box input {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text); font-size: 13px; outline: none;
+}
+.modal-box input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+#modal-info { font-size: 12px; color: var(--muted); margin-top: 10px; word-break: break-all; line-height: 1.7; }
+
+/* ===== Toast ===== */
+.toast {
+  position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
+  background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  padding: 11px 20px; border-radius: 10px; z-index: 200; max-width: 74vw;
+  box-shadow: var(--shadow); font-size: 13px; animation: pop .18s ease;
+}
+.toast.error { border-color: var(--danger); color: var(--danger); background: var(--glow); }
+/* ===== 网页版播放器 ===== */
+.embed-player {
+  margin-bottom: 20px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+  box-shadow: var(--shadow);
+  scroll-margin-top: 66px; /* 滚动定位时避开置顶顶栏 */
+}
+.detail-panel { scroll-margin-top: 66px; }
+/* 手机端全屏播放器：顶部控制栏 + 游戏区铺满，背景纯黑避免白边 */
+.embed-player:fullscreen, .embed-player:-webkit-full-screen { display: flex; flex-direction: column; background: #000; }
+.embed-player:fullscreen .player-stage, .embed-player:-webkit-full-screen .player-stage { flex: 1; min-height: 0; padding: 0; }
+.player-bar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); min-height: var(--bar-h); box-sizing: border-box; } /* 高度与详情窗口顶栏一致 */
+.player-bar .player-title { flex: 1; font-weight: 600; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-modes { display: flex; align-items: center; gap: 8px; }
+.player-stage { display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; padding: 14px; min-height: 220px; }
+/* v0.6.45：游戏独立全屏（embed-stage 即 .player-stage 自身 requestFullscreen）时 padding 归零——
+ * 此前 14px 内边距让画面四周留黑边，挖孔/刘海在屏幕边缘 → 摄像头区域显示黑边而非游戏画面 */
+.player-stage:fullscreen, .player-stage:-webkit-full-screen { padding: 0; }
+/* v0.6.50：手机端「避开刘海」——播放器在刘海/状态栏侧留黑边（不挡游戏 UI；背景 stage 黑）。
+   v0.6.52：横屏刘海在左/右、竖屏在顶部——fitPlayer 每次读取当前方向四周安全区注入
+   --mdz-game-safe-top/left/right（旋转后自动更新），黑边只出现在刘海侧（顶部黑边不再误加） */
+.player-stage.inset-top,
+.player-stage.inset-top:fullscreen,
+.player-stage.inset-top:-webkit-full-screen {
+  padding-top: var(--mdz-game-safe-top, env(safe-area-inset-top, 0px)) !important;
+  padding-left: var(--mdz-game-safe-left, env(safe-area-inset-left, 0px)) !important;
+  padding-right: var(--mdz-game-safe-right, env(safe-area-inset-right, 0px)) !important;
+}
+/* v0.8.3：启动器全屏「顶部空一块」修复（v0.9.1 启动器全屏功能已删除，此规则移除） */
+#embed-wrap { display: inline-block; line-height: 0; }
+.player-frame { border: none; background: #000; border-radius: 4px; box-shadow: 0 10px 40px rgba(0,0,0,.5); transform-origin: top left; }
+.player-bar select { padding: 5px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12.5px; outline: none; }
+.player-bar select:focus { border-color: var(--accent); }
+/* 内嵌窗口顶栏控件统一尺寸 */
+.embed-player .player-bar button,
+.embed-player .player-bar select {
+  height: 32px; box-sizing: border-box; border-radius: 7px; font-size: 12.5px;
+}
+.embed-player .player-bar button { padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.embed-player .player-bar button .ico { width: 14px; height: 14px; }
+.embed-player .player-bar select { padding: 0 8px; }
+.embed-player .player-res-custom input { height: 32px; box-sizing: border-box; }
+.btn-mobile-only { display: none; }
+/* 手机端内嵌：点 ⛶ 后隐藏顶部栏，变为纯游戏全屏 */
+.embed-player.bare .player-bar { display: none; }
+/* ===== iOS 伪全屏（Safari 不支持 Element Fullscreen API 时的兜底，v0.3.3） =====
+ * 内嵌模式全屏目标 = .embed-player（带顶栏）；独立全屏模式目标 = .player-stage（纯画面）。
+ * fixed 铺满视口 + 100dvh（动态视口高度，地址栏收起时铺满；旧 iOS 回退 100vh）。 */
+body.ios-fs-on { overflow: hidden; }
+.embed-player.ios-fs,
+.player-stage.ios-fs {
+  position: fixed !important;
+  left: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh; height: 100dvh;
+  max-width: none !important; max-height: none !important;
+  margin: 0 !important; border-radius: 0 !important;
+  z-index: 2147483000 !important;
+  background: #000;
+}
+.embed-player.ios-fs { display: flex; flex-direction: column; }
+.embed-player.ios-fs .player-stage { flex: 1 1 auto; min-height: 0; height: auto; padding: 0; }
+.player-stage.ios-fs { padding: 0; }
+@keyframes irt-spin { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(90deg); } }
+/* ===== 手机端竖屏启动前「建议横屏」弹窗（v0.3.6+） =====
+ * 原生全屏时被挂载进全屏元素内部（top layer），此 z-index 保证伪全屏/页面态下也在最顶层 */
+.landscape-dialog {
+  position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .55); z-index: 2147483647; /* 32 位 int 最大值 */
+}
+.landscape-dialog.hidden { display: none; }
+.landscape-box {
+  width: min(320px, 84vw); padding: 26px 22px; border-radius: 16px;
+  background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+}
+.ld-ico { font-size: 42px; animation: irt-spin 1.4s ease-in-out infinite; }
+.ld-text { font-size: 14.5px; color: var(--text); line-height: 1.6; margin: 0; }
+.ld-sub { font-size: 12px; color: var(--muted); }
+.ld-btns { display: flex; gap: 10px; margin-top: 6px; }
+.ld-btns button {
+  padding: 9px 20px; border-radius: 9px; font-size: 13.5px; cursor: pointer;
+  border: 1px solid var(--border); transition: all .15s ease;
+}
+.ld-ok { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.ld-skip { background: var(--panel-2); color: var(--text); }
+/* PC 全屏模式：退出全屏后整个窗口只有播放器（顶部选项栏 + 游戏画面）——
+ * 连启动器顶部栏/侧边栏一起隐藏，画面占满 100vh */
+body.app-mode-on .topbar,
+body.app-mode-on .sidebar,
+body.app-mode-on .sidebar-backdrop { display: none !important; }
+body.app-mode-on .view-head,
+body.app-mode-on .detail-panel,
+body.app-mode-on .quick-launch,
+body.app-mode-on .library-head,
+body.app-mode-on #versions,
+body.app-mode-on #empty-tip { display: none !important; }
+body.app-mode-on .content { padding: 0; margin-left: 0; } /* app-mode 隐藏侧边栏 → 内容不留位 */
+.embed-player.app-mode:not(:fullscreen):not(:-webkit-full-screen) {
+  display: flex; flex-direction: column;
+  height: 100vh; /* 占满整个浏览器窗口 */
+  margin-bottom: 0; border-radius: 0;
+}
+.embed-player.app-mode:not(:fullscreen):not(:-webkit-full-screen) .player-bar { flex: none; }
+.embed-player.app-mode:not(:fullscreen):not(:-webkit-full-screen) .player-stage {
+  flex: 1 1 auto; min-height: 0; height: auto; padding: 0;
+}
+.player-res-custom { display: flex; align-items: center; gap: 4px; }
+.player-res-custom input { width: 64px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; outline: none; }
+.player-res-custom span { color: var(--muted); }
+.btn-mode { margin-left: 4px; }
+
+/* ===== 手机端适配（侧边栏=左侧抽屉，顶栏 ☰ 开关） ===== */
+@media (max-width: 820px), (max-width: 1000px) and (pointer: coarse) {
+  .main { flex-direction: column; }
+  /* v0.6.48：手机端顶栏高度同样 + 顶部安全区（iOS 主屏刘海内容不被压；安卓由 mdz-android 覆盖 56）。
+     v0.6.51：padding-top 必须写在 padding 简写之后——否则被 padding:0 12px 覆盖成 0，
+     iOS 主屏系统状态栏会挡住顶栏 ☰ 按钮（用户反馈） */
+  .topbar {
+    height: calc(50px + env(safe-area-inset-top));
+    padding: 0 12px;
+    padding-top: env(safe-area-inset-top);
+  }
+  .topbar-title span { display: none; }
+  /* 侧边栏：左侧抽屉，默认收起；顶栏 ☰ 打开，遮罩点击关闭 */
+  .sidebar {
+    /* v1.0.1：top 0（盖满全高）→ v1.0.2：top = 状态栏区+顶栏高——用户要求侧边栏在顶栏下方、
+       顶栏在最上层（不盖顶栏）；顶栏区由顶栏（z-index 60）覆盖，不透明
+       v0.6.51：top = env(safe-area) + 50px（匹配手机端顶栏实际高 50+safe，消除与顶栏的 6px 缝隙；
+       安卓顶栏 56 由 html.mdz-android .sidebar 覆盖） */
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 50px);
+    left: 0; bottom: 0; width: 230px; z-index: 40; /* 顶栏(60)之下、内容/遮罩之上 */
+    height: auto; /* 覆盖桌面 sticky 的 calc(100vh-56px)，避免底部 6px 空隙 */
+    transform: translateX(-100%); transition: transform .22s ease;
+    border-right: 1px solid var(--border);
+  }
+  body.sidebar-open .sidebar { transform: translateX(0); }
+  .sidebar-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 30;
+    background: rgba(0, 0, 0, .35);
+  }
+  body.sidebar-open .sidebar-backdrop { display: block; }
+  .content { padding: 14px 14px 40px; margin-left: 0; } /* 手机端抽屉不占位 → 内容无左留位 */
+  .cards.grid { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 10px; }
+  .detail-left { width: 150px; } /* 手机端详情同 PC：封面+按钮左、信息右 */
+  /* v-layout专项(2026-09-09)：小屏/低分辨率手机「版本信息」不再被挤换行——收紧详情内边距与
+     meta 行距，label/value 单行紧凑铺满（此前 body 大内边距+封面占位挤压信息区致 value 折行） */
+  .detail-window-body { padding: 12px 12px 16px; gap: 12px; }
+  .dmeta { grid-template-columns: 1fr; gap: 2px; margin-top: 8px; padding-bottom: 8px; }
+  .dmeta .dline { line-height: 1.8; gap: 8px; }
+  .dmeta .dline span { width: 62px; font-size: 12px; }
+  .detail-info h3 { margin-bottom: 2px; }
+  .player-bar { flex-wrap: wrap; }
+  .player-bar .pl-group { display: none; } /* 手机端分辨率选择无效，隐藏 */
+  .player-stage { padding: 8px; }
+  .btn-mobile-only { display: inline-flex; align-items: center; justify-content: center; }
+  .save-card .actions button { flex: 1; }
+  .view-head { margin-bottom: 10px; }
+  /* v0.5.1：library-head 改用 flex-wrap（见上），不再按媒体查询强制上下排列 */
+}
+/* v-layout专项：超小屏（≤420px，老/低分手机）进一步收窄封面列，给版本信息更多横向空间 */
+@media (max-width: 420px) {
+  .detail-left { width: 118px; }
+  .detail-window-body { gap: 10px; padding: 10px 10px 14px; }
+  .dmeta .dline span { width: 54px; font-size: 11.5px; }
+}
+
+
+
+/* ================= v0.6.63：老 WebView（安卓 7 等）封面兼容 =================
+ * 安卓 7 虚拟机系统 WebView 不支持 aspect-ratio（Chrome<88）与 inset（<87）：
+ * 封面高度算成 0 → 「版本信息封面没了」。@supports 回退用 padding-bottom 撑高 + top/right/bottom/left 兜底。 */
+@supports not (aspect-ratio: 1/1) {
+  .cover { padding-bottom: 133.34%; }   /* grid 默认 3:4 封面（高度=宽×4/3；不设 height 以兼容 border-box） */
+  .detail-cover { padding-bottom: 150%; } /* 详情 2:3 封面（高度=宽×3/2） */
+}
+@supports not (inset: 0px) {
+  .cover img, .cover .cover-ph, .detail-cover img, .detail-cover .cover-ph, .lr-cover img, .lr-cover .cover-ph {
+    top: 0; right: 0; bottom: 0; left: 0;
+  }
+}
+/* v0.6.71：关于页所有权/社交信息样式 */
+.about-owner { font-weight: 700; margin: 6px 0 0; }
+.about-social { font-size: 12.5px; color: var(--muted); line-height: 1.9; margin: 6px 0 2px; }
+
+/* ===== v1.0.64：存档传输页（安卓启动器内置的存档服务） =====
+   只用 flex（不用 grid/gap），与安卓 7+ 降级规则保持一致，也避免老引擎布局差异 */
+.tr-row { display: flex; align-items: center; flex-wrap: wrap; margin: 0 0 10px; }
+.tr-row .tr-lab { width: 74px; flex: 0 0 74px; color: var(--muted); font-size: 13px; }
+.tr-row .tr-ctl { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; }
+.tr-row .tr-ctl > * { margin: 0 8px 4px 0; }
+.tr-row .tr-ctl > .muted { font-size: 12px; }
+.tr-input {
+  box-sizing: border-box; width: 150px; max-width: 60%; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+  color: var(--text); font-size: 13px;
+}
+.tr-btn {
+  padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text); font-size: 13px; cursor: pointer;
+  transition: all .15s ease;
+}
+.tr-btn:hover { border-color: var(--accent); color: var(--accent); }
+.tr-btn.primary { border-color: var(--accent); background: var(--glow); color: var(--accent); font-weight: 600; }
+.tr-btn.danger { border-color: var(--danger); color: var(--danger); }
+.tr-btn:disabled { opacity: .45; cursor: default; }
+.tr-btn:disabled:hover { border-color: var(--border); color: var(--text); }
+.transfer-url {
+  display: inline-block; padding: 6px 10px; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--border); color: var(--text); font-size: 13px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-all;
+}
+.tr-list { display: block; }
+.tr-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 12px 14px; margin-bottom: 12px; max-width: 720px;
+}
+.tr-card h5 { font-size: 14px; margin: 0 0 4px; font-weight: 700; }
+.tr-card .tr-meta { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+.tr-actions { display: flex; align-items: center; flex-wrap: wrap; }
+.tr-actions > * { margin: 0 8px 4px 0; }
+.tr-select {
+  box-sizing: border-box; max-width: 46%; padding: 6px 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-size: 13px;
+}
+.tr-loghead { margin: 18px 0 8px; }
+.tr-loghead h2 { font-size: 14px; }
+.transfer-log {
+  margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--panel-2);
+  border: 1px solid var(--border); color: var(--muted); font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace;
+  max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+}
+/* v1.0.68：传输列表行 —— 导出/导入带文字（图标+文本），删除只图标（.slot-btns button 默认 26×26 方钮太大不够放字，所以给带字的放宽） */
+.slot-btns button.slot-txt {
+  width: auto; min-width: 0; padding: 0 9px; gap: 5px;
+  font-size: 12px; font-family: inherit; line-height: 26px;
+}
+.slot-btns button.slot-txt span { white-space: nowrap; }
+/* v1.0.68：导入选版本弹窗里的版本行（同族观感：左侧 accent 竖线） */
+.pk-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; box-sizing: border-box; text-align: left; cursor: pointer;
+  padding: 9px 12px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0; background: var(--panel-2); color: var(--text);
+  font: inherit;
+}
+.pk-item:hover { border-color: var(--accent); }
+.pk-item .slot-name { font-size: 13px; }
+.pk-item .muted { font-size: 11px; }
+
+/* v1.0.70：卡片父级栏里的小按钮（图标+文字） */
+.icon-btn.with-txt { width: auto; min-width: 0; padding: 0 10px; gap: 5px; height: 28px; }
+.icon-btn.with-txt span { font-size: 12px; white-space: nowrap; }
+.icon-btn.with-txt .ico { width: 14px; height: 14px; }
+/* v1.0.70：传输页那张存档卡与存档管理页同宽 */
+#transfer-list .save-card { width: 100%; }
+#transfer-list .save-card .save-card-body { display: block; }
+
+/* v1.0.71：传输列表容器改成纵向 flex —— 否则它落在 `.cards:not(.grid):not(.list)` 的 auto-fill 网格里，
+   单张卡片只会占一列（约 330px），窗口变大卡片不跟着变宽（用户报「宽度没有自适应」）。
+   与存档管理页 `#save-list.cards { display:flex; flex-direction:column }` 同一做法。 */
+#transfer-list.cards { display: flex; flex-direction: column; gap: 12px; }

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' app://game; script-src 'unsafe-inline' app://game; style-src 'unsafe-inline'; img-src 'self' app://game data:; media-src 'self' app://game; connect-src 'self' app://game; frame-src app://game">
+<title>游戏窗口</title>
+<style>
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; }
+  #stage { position:fixed; inset:0; overflow:hidden; background:#000; display:block; }
+  #game { border:0; background:#000; flex:none; transform-origin:0 0; display:block; }
+  .wrap { margin:0; position:absolute; left:0; top:0; line-height:0; transform-origin:0 0; }
+</style>
+</head>
+<body>
+<div id="stage"><iframe id="game" title="game"></iframe></div>
+<script>
+(function () {
+  'use strict';
+  var Q = (function () { var o = {}; try { location.search.replace(/^\?/, '').split('&').forEach(function (s) { if (!s) return; var i = s.indexOf('='); o[decodeURIComponent(i > -1 ? s.slice(0, i) : s)] = decodeURIComponent(i > -1 ? s.slice(i + 1) : ''); }); } catch (e) {} return o; })();
+  var vid = Q.v || '';
+  var entry = Q.e || 'index.html';
+  var dbKey = Q.dbKey || '';
+  // v0.7.27：局域网信令地址（多人版专用；由主进程按当前配置注入）
+  var sig = Q.sig || '';
+  // v0.7.29：多人版玩家名（启动器「联机配置」里配置）+ mdz=1（客户端页据此隐藏滚动条）
+  var userName = Q.user || '';
+  var mdzFlag = Q.mdz === '1';
+  var LW = parseInt(Q.w, 10) || 1280;
+  var LH = parseInt(Q.h, 10) || 720;
+  var cal = Q.cal === '1';
+  var noKeymap = Q.nk === '1';
+  // fit: fixed=固定窗口大小 / scale=固定分辨率缩放 / follow=自由窗口大小(分辨率跟随窗口)
+  var fit = Q.fit === 'follow' ? 'follow' : (Q.fit === 'scale' ? 'scale' : 'fixed');
+  var fsOn = false;
+
+  var stage = document.getElementById('stage');
+  var frame = document.getElementById('game');
+  var wrap = document.createElement('div');
+  wrap.className = 'wrap';
+  wrap.style.width = LW + 'px';
+  wrap.style.height = LH + 'px';
+  stage.appendChild(wrap);
+  stage.removeChild(frame);
+  frame.style.cssText = 'width:100%;height:100%;border:0;background:#000;display:block;margin:0';
+  wrap.appendChild(frame);
+
+  // 居中定位（stage 不做 flex 居中——避免与 transform 位移双重偏移）：
+  // 保持 wrap 逻辑尺寸，transform translate(tx,ty) 把画面放到窗口正中并等比缩放。
+  function fitSize() {
+    var cw = stage.clientWidth || window.innerWidth || 1280;
+    var ch = stage.clientHeight || window.innerHeight || 720;
+    var k = Math.min(cw / LW, ch / LH);
+    if (!(k > 0) || !isFinite(k)) k = 1;
+    var tx = Math.round((cw - LW * k) / 2);
+    var ty = Math.round((ch - LH * k) / 2);
+    wrap.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + k + ')';
+    wrap.style.transformOrigin = '0 0';
+  }
+  function clearScale() { wrap.style.transform = ''; wrap.style.left = '0'; wrap.style.top = '0'; }
+  function layout() {
+    if (fit === 'follow' || fsOn && fit === 'follow') {
+      wrap.style.width = '100%';
+      wrap.style.height = '100%';
+      clearScale();
+      return;
+    }
+    if (wrap.style.width !== LW + 'px') { wrap.style.width = LW + 'px'; wrap.style.height = LH + 'px'; }
+    if (fsOn || fit === 'scale') { fitSize(); } else { clearScale(); }
+  }
+  // 主进程在全屏/退出全屏时调用
+  window.__setWinFs = function (on) { fsOn = !!on; layout(); };
+  window.addEventListener('resize', layout);
+
+  // v0.7.32（存档隔离）：多人版/PC 版是 directUrl 直链加载（启动器不做 HTML 注入）→ 历史上它们
+  // 写**裸库** `_C2SaveStates`，与其它版本互相覆盖（用户反馈「存档隔离不起作用」的根因之一）。
+  // 壳页在游戏 iframe 加载后把同一套隔离补丁装进它的 window（同源 app://game，可改写）。
+  // 客户端页自带的 P6 补丁（读 ?dbKey=）可能已经隔离过 → 用 __mdzIsolation/__mdzDbKey 去重，防双重后缀。
+  function mdzIsolate(win, dbKey) {
+    try {
+      if (!win || win.__mdzIsolationApplied) return false;
+      var k = String(dbKey || '').replace(/[^A-Za-z0-9_-]/g, '');
+      if (!k) return false;
+      if (win.__mdzIsolation === 'on' && win.__mdzDbKey === k) { win.__mdzIsolationApplied = true; return true; }
+      var s = '_' + k, ok = false;
+      try {
+        var idb = win.indexedDB;
+        if (idb && typeof idb.open === 'function') {
+          var o = idb.open.bind(idb);
+          idb.open = function (n, v) { return (n && typeof n === 'string' && !n.endsWith(s)) ? o(n + s, v) : o(n, v); };
+          ok = true;
+        }
+      } catch (e) {}
+      try {
+        if (win.localStorage && !win.__mdzLsnIso) {
+          var ls = win.localStorage;
+          var gi = ls.getItem.bind(ls), si = ls.setItem.bind(ls), ri = ls.removeItem.bind(ls);
+          var key = function (n) { return (typeof n === 'string' && n.indexOf('__c2save_') === 0) ? n + s : n; };
+          ls.getItem = function (n) { return gi(key(n)); };
+          ls.setItem = function (n, v) { return si(key(n), v); };
+          ls.removeItem = function (n) { return ri(key(n)); };
+          win.__mdzLsnIso = true; ok = true;
+        }
+      } catch (e) {}
+      try {
+        var sw = win.navigator && win.navigator.serviceWorker;
+        if (sw && typeof sw.register === 'function' && !win.__mdzSwBlocked) { sw.register = function () { return Promise.resolve({}); }; win.__mdzSwBlocked = true; }
+      } catch (e) {}
+      win.__mdzIsolationApplied = true;
+      win.__mdzDbKey = k;
+      win.__mdzIsolation = ok ? 'on' : 'none';
+      return ok;
+    } catch (e) { return false; }
+  }
+
+  function injectInto(d) {
+    /* v0.7.32：存档隔离（放在最前——游戏在"存/读档"时才开库，这里装完一定早于它） */
+    try { if (mdzFlag || dbKey) mdzIsolate(frame.contentWindow, dbKey); } catch (e) {}
+    /* v0.7.27：把信令地址交给多人版客户端（mods.js 读取优先级最高的 window.__mdzMpSignal）
+       —— 单机版无 sig 参数时完全不介入 */
+    try {
+      if (sig) {
+        var gw = frame.contentWindow;
+        if (gw && gw.__mdzMpSignal !== sig) gw.__mdzMpSignal = sig;
+      }
+      // v0.7.29：玩家名（模组 mp-server-simulator 读 __mdzMpUser 优先，其次 URL ?user=）
+      if (userName) {
+        var gw2 = frame.contentWindow;
+        if (gw2 && gw2.__mdzMpUser !== userName) gw2.__mdzMpUser = userName;
+      }
+    } catch (e) {}
+    try {
+      if (!d.getElementById('__mdz_win_ov')) {
+        var st = d.createElement('style');
+        st.id = '__mdz_win_ov';
+        st.textContent = 'html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important;}';
+        (d.head || d.documentElement).appendChild(st);
+      }
+    } catch (e) {}
+    try {
+      if (!d.getElementById('__mdz_cpfx')) {
+        var sc = d.createElement('script');
+        sc.id = '__mdz_cpfx';
+        sc.textContent = '(function(){try{' +
+          'if(window.__mdzCpfxDone)return;window.__mdzCpfxDone=1;' +
+          'var P=CanvasRenderingContext2D.prototype,srcs=typeof WeakMap!=="undefined"?new WeakMap():null;' +
+          'var ocp=P.createPattern;P.createPattern=function(img,rep){var p=ocp.apply(this,arguments);if(p&&srcs&&img&&(img.nodeName==="IMG"||img.nodeName==="CANVAS")){try{srcs.set(p,img);}catch(e){}}return p;};' +
+          'var odi=P.drawImage;P.drawImage=function(){var a=arguments,i=a[0];' +
+          'if(i&&i.toString&&String(i)==="[object CanvasPattern]"&&srcs&&srcs.get(i)){var s=srcs.get(i),ar=[s];for(var n=1;n<a.length;n++)ar.push(a[n]);return odi.apply(this,ar);}' +
+          'return odi.apply(this,a);};' +
+          '}catch(e){}})();';
+        (d.head || d.documentElement).appendChild(sc);
+      }
+    } catch (e) {}
+    if (!noKeymap) {
+      try {
+        // v0.7.17：Electron preload 只在顶层壳页运行，游戏 iframe 内没有 __launcher——
+        // 桥接顶层 API 进 iframe（mapper.js 原生存储走 config.json 的通道）；并补版本/校准标记
+        // （mapper 的 versionId 路径回退只认 web 的 /versions/，窗口模式 /version/ 需 __mdzVersion）
+        try {
+          var pw = frame.contentWindow;
+          if (pw) {
+            if (!pw.__launcher && window.__launcher) pw.__launcher = window.__launcher;
+            if (pw.__mdzVersion === undefined) pw.__mdzVersion = vid;
+            if (cal && pw.__mdzCalibrate === undefined) pw.__mdzCalibrate = true;
+          }
+        } catch (e) {}
+        // web 同款键盘映射器（多方案/预设/拖动改位/防卡死）：先注入默认方案 preset，再注入 mapper.js
+        if (!d.getElementById('mdz-keymap-preset')) {
+          var p0 = d.createElement('script');
+          p0.id = 'mdz-keymap-preset';
+          p0.src = 'app://game/_launcher/mdz-keymap-preset.js';
+          (d.head || d.documentElement).appendChild(p0);
+        }
+        if (!d.getElementById('mdz-web-mapper')) {
+          var s2 = d.createElement('script');
+          s2.id = 'mdz-web-mapper';
+          s2.src = 'app://game/_launcher/mapper.js';
+          (d.head || d.documentElement).appendChild(s2);
+        }
+      } catch (e) {}
+    }
+  }
+  frame.onload = function () {
+    layout();
+    var retry = 0;
+    (function poll() {
+      try {
+        var d = frame.contentDocument;
+        if (d && d.documentElement) { injectInto(d); layout(); focusGame(); return; }
+      } catch (e) {}
+      if (retry++ < 40) setTimeout(poll, 200);
+    })();
+  };
+  frame.src = 'app://game/version/' + encodeURIComponent(vid) + '/' +
+    entry.split('/').map(function (s) { return encodeURIComponent(s); }).join('/') +
+    '?dbKey=' + encodeURIComponent(dbKey) + (cal ? '&calibrate=1' : '') +
+    /* v0.7.28：信令地址写进 URL —— 多人版的 mdz-signal 模组在**装载时**就读 location.search，
+       比装载后再写 window.__mdzMpSignal 更稳（后者对已装载的模组太晚）
+       v0.7.29：玩家名 + mdz=1（客户端页据此 html,body{overflow:hidden}，新窗口模式也不出滚动条） */
+    (sig ? '&signal=' + encodeURIComponent(sig) : '') +
+    (userName ? '&user=' + encodeURIComponent(userName) : '') +
+    (mdzFlag ? '&mdz=1' : '');
+  // v0.7.17：兜底聚焦与 F10 转发——焦点不在游戏 iframe 时（刚启动/点了黑边/菜单介入），
+  // F10（键盘映射校准开关）由壳页捕获并转发给游戏文档（mapper.js 监听 iframe window）
+  function focusGame() { try { if (frame && frame.contentWindow) frame.contentWindow.focus(); } catch (e) {} }
+  window.addEventListener('mousedown', focusGame, true);
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'F10') {
+      try {
+        if (frame && frame.contentWindow) {
+          frame.contentWindow.dispatchEvent(new KeyboardEvent('keydown', { code: 'F10', bubbles: true, cancelable: true }));
+        }
+      } catch (err) {}
+    }
+  }, true);
+  layout();
+})();
+</script>
+</body>
+</html>
