@@ -13,6 +13,8 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { normalizeHost } = require('./version-manager');
+const mpPaths = require('./mp-paths');
 
 let ctx = null;          // { versionManager, resourcesPath, appPath, onLog, onStatus }
 let signalHandle = null; // mdz-signal 的 start() 返回值
@@ -37,21 +39,29 @@ function log(msg) {
   try { console.log('[lan] ' + msg); } catch (e) {}
 }
 
-/** 把可能带协议/端口/路径的地址归一化成 host */
-function hostOnly(h) {
-  let s = String(h || '').trim();
-  if (!s) return '';
-  s = s.replace(/^[a-zA-Z]+:\/\//, '').split('/')[0].split(':')[0];
-  return s;
+/** 把可能带协议/端口/路径的地址归一化成 host（与 version-manager.normalizeHost 同一实现） */
+const hostOnly = normalizeHost;
+
+/** 收集候选目录（忽略空值；p 是懒计算的路径，避免 ctx 未就绪时报错） */
+function collectDirs(getters) {
+  const out = [];
+  for (const get of getters) {
+    try {
+      const dir = get();
+      if (dir) out.push(dir);
+    } catch (e) { /* 跳过无效候选 */ }
+  }
+  return out;
 }
 
 /** 工具包脚本目录（含 signal-server/ lan-host/ game-patch/） */
 function resolveLanDir() {
-  const cands = [];
-  if (process.env.MDZ_LAN_DIR) cands.push(process.env.MDZ_LAN_DIR);
-  try { if (ctx && ctx.resourcesPath) cands.push(path.join(ctx.resourcesPath, 'lan')); } catch (e) {}
-  try { if (ctx && ctx.appPath) cands.push(path.join(ctx.appPath, 'lan')); } catch (e) {}
-  cands.push(KIT_FALLBACK);
+  const cands = collectDirs([
+    () => process.env.MDZ_LAN_DIR,
+    () => ctx && ctx.resourcesPath && path.join(ctx.resourcesPath, 'lan'),
+    () => ctx && ctx.appPath && path.join(ctx.appPath, 'lan'),
+    () => KIT_FALLBACK
+  ]);
   for (const d of cands) {
     try {
       if (fs.existsSync(path.join(d, 'signal-server', 'mdz-signal.js')) &&
@@ -61,36 +71,27 @@ function resolveLanDir() {
   return '';
 }
 
-/** 多人版客户端目录（分发给别人用的那份；v0.7.24 起 PC 不再把它当"版本"，而是服务器资源）
- *  顺序（v1.0.16 起内置版本统一在 versions\）：<resources>/versions/minidayz-mp → <app>/versions/minidayz-mp（dev）
- *        → <resources>/builtin/minidayz-mp、<app>/builtin/minidayz-mp（旧布局回退）
- *        → <resources>/mp-client、<app>/mp-client（更旧布局回退）→ 数据目录里的副本（兼容老数据） */
+/** 多人版客户端目录（分发/本地播放用的那份；候选顺序见 mp-paths） */
 function builtinMpDir() {
-  const cands = [];
-  try { if (ctx.resourcesPath) cands.push(path.join(ctx.resourcesPath, 'versions', 'minidayz-mp')); } catch (e) {}
-  try { if (ctx.appPath) cands.push(path.join(ctx.appPath, 'versions', 'minidayz-mp')); } catch (e) {}
-  try { if (ctx.resourcesPath) cands.push(path.join(ctx.resourcesPath, 'builtin', 'minidayz-mp')); } catch (e) {}
-  try { if (ctx.appPath) cands.push(path.join(ctx.appPath, 'builtin', 'minidayz-mp')); } catch (e) {}
-  try { if (ctx.resourcesPath) cands.push(path.join(ctx.resourcesPath, 'mp-client')); } catch (e) {}
-  try { if (ctx.appPath) cands.push(path.join(ctx.appPath, 'mp-client')); } catch (e) {}
-  try { cands.push(path.join(ctx.appPath || '', '..', 'mp-client')); } catch (e) {}
-  try { cands.push(path.join(ctx.versionManager.getVersionsRoot(), 'minidayz-mp')); } catch (e) {}
-  for (const d of cands) {
-    try { if (d && fs.existsSync(path.join(d, 'client', 'index.html'))) return path.resolve(d); } catch (e) {}
-  }
-  return '';
+  return mpPaths.findClientDir({
+    resourcesPath: ctx && ctx.resourcesPath,
+    appPath: ctx && ctx.appPath,
+    versionsRoot: (ctx && ctx.versionManager && ctx.versionManager.getVersionsRoot()) || '',
+    includeUserData: true
+  });
 }
 
 /** 建房程序目录（含 NW.js 可执行文件：Windows = nw.exe，macOS = nwjs.app/Contents/MacOS/nwjs） */
 function resolveHostDir() {
   const lan = ctx.versionManager.getLan();
-  const cands = [];
-  if (lan.hostDir) cands.push(lan.hostDir);
-  try { if (ctx.resourcesPath) cands.push(path.join(ctx.resourcesPath, 'host')); } catch (e) {}   // v0.7.26：随包自带（resources\host）
-  try { if (ctx.appPath) cands.push(path.join(ctx.appPath, 'host')); } catch (e) {}
-  const ld = resolveLanDir();
-  if (ld) cands.push(path.join(ld, 'host'));
-  cands.push(path.join(KIT_FALLBACK, 'host'));
+  const lanDir = resolveLanDir();
+  const cands = collectDirs([
+    () => lan.hostDir,
+    () => ctx.resourcesPath && path.join(ctx.resourcesPath, 'host'),  // v0.7.26：随包自带
+    () => ctx.appPath && path.join(ctx.appPath, 'host'),
+    () => lanDir && path.join(lanDir, 'host'),
+    () => path.join(KIT_FALLBACK, 'host')
+  ]);
   for (const d of cands) {
     try {
       if (HOST_BIN_CANDIDATES.some((b) => fs.existsSync(path.join(d, b)))) return path.resolve(d);
@@ -105,7 +106,7 @@ function resolveHostBin(dir) {
     const f = path.join(dir, b);
     try { if (fs.existsSync(f)) return f; } catch (e) {}
   }
-  return IS_MAC ? path.join(dir, HOST_BIN_CANDIDATES[0]) : path.join(dir, 'nw.exe');
+  return path.join(dir, HOST_BIN_CANDIDATES[0]);
 }
 
 /** 生效地址：信令（ws/wss）与客户端分发页（http） */
@@ -281,17 +282,29 @@ function stopHost() {
   return status();
 }
 
+/** 随包的建房程序是否就位（resources/host 下有该平台的可执行文件） */
+function hasBundledHost() {
+  try {
+    if (!ctx.resourcesPath) return false;
+    const hostDir = path.join(ctx.resourcesPath, 'host');
+    return HOST_BIN_CANDIDATES.some((b) => fs.existsSync(path.join(hostDir, b)));
+  } catch (e) { return false; }
+}
+
 /* ---------------- 状态 ---------------- */
 function status() {
   let sigStats = null;
   try { if (signalHandle && signalHandle.stats) sigStats = signalHandle.stats(); } catch (e) {}
   const lan = ctx.versionManager.getLan();
+  // 目录解析要读文件系统，同一次 status 里只算一次
+  const lanDir = resolveLanDir();
+  const hostDir = resolveHostDir();
   return {
     lan,
     playerName: lan.playerName || 'MiniPlayer', // v0.7.29：多人版玩家名（注入给客户端）
     endpoints: endpoints(),
-    lanDir: resolveLanDir(),
-    hostDir: resolveHostDir(),
+    lanDir,
+    hostDir,
     builtinMp: builtinMpDir(),
     signal: {
       running: !!signalHandle,
@@ -311,10 +324,10 @@ function status() {
     },
     host: {
       running: !!(hostProc && !hostProc.killed),
-      bundled: (function () { try { if (!ctx.resourcesPath) return false; const hd = path.join(ctx.resourcesPath, 'host'); return HOST_BIN_CANDIDATES.some((b) => fs.existsSync(path.join(hd, b))); } catch (e) { return false; } })(),
+      bundled: hasBundledHost(),
       pid: (hostProc && !hostProc.killed) ? hostProc.pid : 0,
-      dir: resolveHostDir(),
-      exists: !!resolveHostDir()
+      dir: hostDir,
+      exists: !!hostDir
     },
     logs: logs.slice(-40)
   };
@@ -329,6 +342,13 @@ function init(opts) {
   return status();
 }
 
-function stopAll() { stopHost(); stopServe(); stopSignal(); try { if (localClient && localClient.handle) localClient.handle.close(); } catch (e) {} localClient = null; localClientPend = null; }
+function stopAll() {
+  stopHost();
+  stopServe();
+  stopSignal();
+  try { if (localClient && localClient.handle) localClient.handle.close(); } catch (e) { /* 忽略 */ }
+  localClient = null;
+  localClientPend = null;
+}
 
 module.exports = { init, status, startSignal, stopSignal, startServe, stopServe, startHost, stopHost, stopAll, endpoints, resolveLanDir, resolveHostDir, builtinMpDir, hostOnly, ensureLocalClient, restartLocalClient };

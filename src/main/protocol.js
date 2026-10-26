@@ -2,6 +2,7 @@
 const { protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const mpPaths = require('./mp-paths');
 
 const SCHEME = 'app';
 
@@ -51,28 +52,18 @@ function registerPrivilegedSchemes() {
 }
 
 /** 路径穿越防护：target 必须位于 root 之内 */
-/** v0.7.27：随包的多人版客户端目录（合成版本 __lan_client__ 的素材来源，和单机版一样直接读本地文件）
- *  v1.0.16（用户要求：内置版本统一放 versions\）——打包后 `resources\versions\{minidayz-pc,minidayz-mp}`，
- *           dev = `<app>\versions\...`；旧的 `builtin\` 与 `mp-client` 布局保留为兼容回退。 */
-function mpClientRoot() {
-  const cands = [
-    path.join(process.resourcesPath || '', 'versions', 'minidayz-mp'),   // v1.0.16 新布局（打包后 extraResources）
-    path.join(__dirname, '..', '..', 'versions', 'minidayz-mp'),         // v1.0.16 新布局（dev）
-    path.join(process.resourcesPath || '', 'builtin', 'minidayz-mp'),    // 旧布局回退（≤1.0.15）
-    path.join(__dirname, '..', '..', 'builtin', 'minidayz-mp'),
-    path.join(process.resourcesPath || '', 'mp-client'),                 // 更旧布局回退（≤0.7.33）
-    path.join(__dirname, '..', '..', 'mp-client')
-  ];
-  for (const c of cands) {
-    try { if (fs.existsSync(path.join(c, 'client', 'index.html'))) return path.resolve(c); } catch (e) {}
-  }
-  return path.join(process.resourcesPath || '', 'versions', 'minidayz-mp');
-}
 function isSafe(root, target) {
   const rel = path.relative(root, target);
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
+/** 随包的多人版客户端目录（合成版本 __lan_client__ 的素材来源，直接读本地文件） */
+function mpClientRoot() {
+  return mpPaths.findClientDir({
+    resourcesPath: process.resourcesPath,
+    appPath: path.join(__dirname, '..', '..')
+  }) || path.join(process.resourcesPath || '', 'versions', 'minidayz-mp');
+}
 /**
  * 用 fs 直接读文件（兼容打包后 asar 内部路径；net.fetch 的 file:// 无法读 asar）。
  * app://game/_launcher/*        → 启动器 UI（打包在应用内）
@@ -126,9 +117,10 @@ function registerGameProtocol(vm) {
         const relPath = p.replace(/^\/version\//, '');
         /* v0.7.27：合成版「多人版客户端」没有版本目录——映射到随包的 mp-client（和单机版一样直接读本地文件） */
         if (relPath.startsWith('__lan_client__/')) {
+          const root = mpClientRoot();
           const sub = relPath.slice('__lan_client__/'.length);
-          filePath = path.resolve(mpClientRoot(), sub);
-          if (!isSafe(mpClientRoot(), filePath)) return new Response('forbidden', { status: 400 });
+          filePath = path.resolve(root, sub);
+          if (!isSafe(root, filePath)) return new Response('forbidden', { status: 400 });
         } else {
           /* v0.7.44：内置版本不再复制进数据目录 → 数据目录里没有时回退到内置根（resources\versions 等） */
           const cands = [vm.getVersionsRoot()].concat((vm.getBuiltinRoots && vm.getBuiltinRoots()) || []);

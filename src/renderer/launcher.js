@@ -2212,8 +2212,6 @@ const PC_UPDATE_URL = 'https://moyu-camp.info/archives/minidayz-download';
     } catch (e) { console.warn('[web] inject mapper failed:', e.message); }
   }
   // ===== 运行时注入（免命令导入：不改游戏 index.html 文件） =====
-
-  // ===== 运行时注入（免命令导入：不改游戏 index.html 文件） =====
   // v0.6.34：统一 dbKey（存档隔离后缀）——所有使用点必须一致（游戏注入/导出/导入/备份/删除），
   // 否则 dbKey 缺失的版本会出现「游戏读 _ 库、导入写 _undefined 库」的错位 → 导入后游戏读不到。
   function dbKeyOf(v) { return (v && v.dbKey) || ('version_' + (v ? v.id : '')); }

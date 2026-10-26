@@ -3,8 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const core = require('./version-core');
+const appPaths = require('./app-paths');
 
-const CONFIG_FILE = 'config.json';
+const CONFIG_FILE = appPaths.CONFIG_FILE;
 const APP_DATA_DIR = 'MDZLauncher'; // 与 app.setName 保持一致
 
 let dataMode = 'appdata';
@@ -16,39 +17,12 @@ function configPath() { return path.join(userDataPath, CONFIG_FILE); }
 
 /** v0.8.0：便携数据目录 = <便携基准>/data（与 <便携基准>/versions 同级，整包搬走即带走全部数据） */
 function portableBase() {
-  return core.computePortableBase({
-    exeDir: path.dirname(app.getPath('exe')),
-    isPackaged: app.isPackaged,
-    devRoot: path.join(__dirname, '..', '..')
-  });
+  return appPaths.portableBase(app);
 }
 function portableDataPath() { return path.join(portableBase(), 'data'); }
 /** v0.8.0：appdata 模式的「数据目录」= <根>\data（realUserData 是根，versions 也在根下与它同级） */
 function appdataDataPath() { return path.join(realUserData || userDataPath, 'data'); }
 function portableMarkPath() { return path.join(portableDataPath(), '.portable'); }
-
-// 迁移的 profile 项目（设置/存档所在；Cache/GPUCache/Code Cache 等可再生缓存不搬）
-const PROFILE_ITEMS = ['Local Storage', 'Session Storage', 'IndexedDB', 'Preferences', 'Network', 'WebStorage', 'Shared Dictionary'];
-
-function copyItem(src, dst) {
-  const st = fs.statSync(src);
-  if (st.isDirectory()) return core.copyDirRecursive(src, dst);
-  fs.mkdirSync(path.dirname(dst), { recursive: true });
-  fs.copyFileSync(src, dst);
-  return 1;
-}
-/** 把 profile 里的设置/存档搬到目标数据目录（只补缺失项，不覆盖已有数据） */
-function migrateProfile(fromDir, toDir) {
-  if (!fromDir || !toDir || path.resolve(fromDir) === path.resolve(toDir)) return 0;
-  let n = 0;
-  fs.mkdirSync(toDir, { recursive: true });
-  for (const name of PROFILE_ITEMS) {
-    const src = path.join(fromDir, name);
-    const dst = path.join(toDir, name);
-    try { if (fs.existsSync(src) && !fs.existsSync(dst)) n += copyItem(src, dst); } catch (e) { /* 单项失败不影响整体 */ }
-  }
-  return n;
-}
 
 function readConfig() {
   try { return JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch (e) { return {}; }
@@ -170,7 +144,7 @@ function setDataMode(mode) {
   //  → portable：系统 appdata → 便携目录；→ appdata：便携目录 → 系统 appdata
   const fromDir = (mode === 'portable') ? appdataDataPath() : userDataPath;
   const toDir = (mode === 'portable') ? posData : appdataDataPath();
-  const cacheMoved = migrateProfile(fromDir, toDir);
+  const cacheMoved = appPaths.migrateProfile(fromDir, toDir);
 
   // 配置写到目标数据目录（含 resolutions/keymaps），并维护便携标记
   const cfg = readConfig();

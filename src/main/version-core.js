@@ -75,6 +75,45 @@ function readMetaFromZip(zip, singleTop) {
 
 // ---------- zip 检查 ----------
 
+/**
+ * 识别「套一层文件夹」的 zip：根目录没有 index.html 时，
+ * 找唯一含 index.html（或 version.json）的顶层目录作为版本根。
+ * 允许多个杂项顶层目录并存（如 __MACOSX），但候选版本根多于一个就无法确定 → 返回 null。
+ */
+function detectSingleTop(files, topLevels) {
+  const rootHasIndex = files.some((e) => normEntry(e.entryName) === 'index.html');
+  if (rootHasIndex) return null;
+  const candidates = [...topLevels].filter((top) =>
+    files.some((e) => {
+      const clean = normEntry(e.entryName);
+      return clean === top + '/index.html' || clean === top + '/version.json';
+    })
+  );
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/** 用 metadata 覆盖候选版本的默认值（只覆盖 metadata 里真正给了的字段） */
+function applyMetadata(cand, meta) {
+  if (!meta) return;
+  cand.meta = meta;
+  cand.hasMeta = true;
+  if (meta.id) cand.id = sanitizeId(meta.id) || cand.id;
+  // 无顶层目录/无 metadata.id 时用 metadata.name 兜底（仍不拿 zip 文件名当 id）
+  if (!cand.id && meta.name) cand.id = sanitizeId(meta.name) || '';
+  if (meta.name) cand.name = meta.name;
+  if (meta.dbKey) cand.dbKey = String(meta.dbKey);
+  if (meta.desc) cand.desc = meta.desc;
+  if (meta.author) cand.author = meta.author;
+  if (meta.version) cand.version = String(meta.version);
+  if (meta.series) cand.series = meta.series;
+  if (meta.cover) cand.cover = String(meta.cover);
+  if (meta.cardRatio) cand.cardRatio = String(meta.cardRatio);
+  if (Array.isArray(meta.screenshots)) cand.screenshots = meta.screenshots.map(String);
+  if (meta.download) cand.download = String(meta.download);
+  if (meta.entry) cand.entry = meta.entry;
+}
+
+
 function inspectZip(zipPath) {
   if (!fs.existsSync(zipPath)) throw new Error('文件不存在: ' + zipPath);
   const zip = new AdmZip(zipPath);
@@ -88,20 +127,7 @@ function inspectZip(zipPath) {
     const first = clean.split('/')[0];
     if (first && first !== '.') topLevels.add(first);
   }
-  // v0.6.1：识别「套一层文件夹」的 zip——根目录无 index.html 时，
-  // 找唯一含 index.html（或 version.json）的顶层目录作为版本根（不再要求顶层只有这一个目录，
-  // 兼容 __MACOSX 等杂项并存；多个候选目录则无法确定 → 保持 null → 导入报缺入口）
-  let singleTop = null;
-  const rootHasIndex = files.some((e) => normEntry(e.entryName) === 'index.html');
-  if (!rootHasIndex) {
-    const candTops = [...topLevels].filter((t) =>
-      files.some((e) => {
-        const c = normEntry(e.entryName);
-        return c === t + '/index.html' || c === t + '/version.json';
-      })
-    );
-    if (candTops.length === 1) singleTop = candTops[0];
-  }
+  const singleTop = detectSingleTop(files, topLevels);
   const at = (name) => files.some((e) => {
     const c = normEntry(e.entryName);
     return c === name || (singleTop && c === singleTop + '/' + name);
@@ -134,26 +160,7 @@ function inspectZip(zipPath) {
     totalSize
   };
 
-  // 读取 metadata 配置并覆盖默认值（id/name/dbKey/desc/entry/icon/launch/cover/screenshots/version/series/author）
-  const meta = readMetaFromZip(zip, singleTop);
-  if (meta) {
-    cand.meta = meta;
-    cand.hasMeta = true;
-    if (meta.id) cand.id = sanitizeId(meta.id) || cand.id;
-    // v0.5.7：无顶层目录/无 metadata.id 时用 metadata.name 兜底（仍不用 zip 文件名）
-    if (!cand.id && meta.name) cand.id = sanitizeId(meta.name) || '';
-    if (meta.name) cand.name = meta.name;
-    if (meta.dbKey) cand.dbKey = String(meta.dbKey);
-    if (meta.desc) cand.desc = meta.desc;
-    if (meta.author) cand.author = meta.author;
-    if (meta.version) cand.version = String(meta.version);
-    if (meta.series) cand.series = meta.series;
-    if (meta.cover) cand.cover = String(meta.cover);
-    if (meta.cardRatio) cand.cardRatio = String(meta.cardRatio);
-    if (Array.isArray(meta.screenshots)) cand.screenshots = meta.screenshots.map(String);
-    if (meta.download) cand.download = String(meta.download);
-    if (meta.entry) cand.entry = meta.entry;
-  }
+  applyMetadata(cand, readMetaFromZip(zip, singleTop));
 
   // v0.5.7：仍无 id（无顶层目录、无元数据）→ 固定 'game'（重复导入时走覆盖提示，不再用文件名生成）
   if (!cand.id) cand.id = 'game';
@@ -290,111 +297,135 @@ function detectC2Version(dir) {
   } catch (e) { return ''; }
 }
 
+/**
+ * 扫描版本根，得到版本列表。
+ * 数据目录优先于内置根：同名版本以内置版为「后备」，用户自己装的覆盖内置版。
+ *
+ * @param {string} root 数据目录的 versions/
+ * @param {string[]} [extraRoots] 内置版本根（打包 = resources/versions，dev = <工程根>/versions）
+ */
 function loadVersions(root, extraRoots) {
   const out = [];
   const seenIds = new Set();
-  /* v0.7.44（用户要求：数据目录里不该再有一份重复的内置版）：内置版本不再复制进数据目录，
-     而是把内置根（打包 = resources\versions；dev = <工程根>\versions）一并列出来；
-     同名时数据目录优先（用户自己导入的同 ID 版本覆盖内置版）。 */
-  const bases = [];
-  if (root) bases.push({ base: root, builtin: false });
-  for (const r of (extraRoots || [])) {
-    if (!r) continue;
-    let dup = false;
-    for (const b of bases) { try { if (path.resolve(b.base) === path.resolve(r)) dup = true; } catch (e) { /* 忽略 */ } }
-    if (!dup) bases.push({ base: r, builtin: true });
-  }
-  for (const item of bases) {
-  const base = item.base;
-  if (!base || !fs.existsSync(base)) continue;
-  for (const name of fs.readdirSync(base)) {
-    const dir = path.join(base, name);
-    let st;
-    try { st = fs.statSync(dir); } catch (e) { continue; }
-    if (!st.isDirectory()) continue;
-    const vf = path.join(dir, 'version.json');
-    let rec = null;
-    if (fs.existsSync(vf)) {
-      try { rec = JSON.parse(fs.readFileSync(vf, 'utf8')); } catch (e) { rec = null; }
-    }
-    if (!rec || !rec.id) {
-      // v0.2.9：无 version.json 的解压目录也识别（目录即真相，与 web versions.php 一致）——
-      // 有 index.html 即视为版本；id=metadata.id || 目录名；图标/封面/截图从 metadata 解析
-      // v0.7.2：入口在子目录（metadata.entry 指向，如 minidayz-pc 的 v141/index.html）也识别——
-      // versions.php 本来就扫任意 metadata 子目录，这里对齐；无 index.html 且无有效 entry 才跳过
-      const meta = readMetaFromDir(dir) || {};
-      let entryPath = null;
-      const metaEntry = meta.entry || 'index.html';
-      if (fs.existsSync(path.join(dir, 'index.html'))) entryPath = path.join(dir, 'index.html');
-      else if (metaEntry && !String(metaEntry).split('/').some((s) => s === '..')) {
-        const cand = path.join(dir, String(metaEntry));
-        if (fs.existsSync(cand)) entryPath = cand;
-      }
-      if (!entryPath) continue;
-      const rawId = sanitizeId(meta.id || name);
-      const rawName = meta.name || meta.id || name;
-      const dbKey = String(meta.dbKey || defaultDbKey(rawId));
-      rec = {
-        id: rawId,
-        name: rawName,
-        dbKey: dbKey,
-        entry: meta.entry || 'index.html',
-        desc: meta.desc || '',
-        author: meta.author || '',
-        version: String(meta.version || ''),
-        series: meta.series || '',
-        cardRatio: meta.cardRatio || '',
-        download: meta.download || '',
-        addedAt: Date.now(),
-        _dir: dir
-      };
-      rec.cover = resolveCover(dir, meta.cover) || '';
-      const shots = (Array.isArray(meta.screenshots) ? meta.screenshots : []).map(String).filter(Boolean);
-      rec.screenshots = shots.length ? shots : scanScreenshots(dir);
-      const icon = resolveIcon(dir, meta.icon) || (fs.existsSync(path.join(dir, 'icon-256.png')) ? 'icon-256.png' : null);
-      if (icon) rec.icon = icon;
-      if (meta.launch) rec.launch = meta.launch;
-    }
-    if (rec && rec.id) {
-      if (item.builtin && seenIds.has(rec.id)) continue; // 内置版被数据目录里的同名版覆盖
+
+  for (const { base, builtin } of collectVersionBases(root, extraRoots)) {
+    if (!base || !fs.existsSync(base)) continue;
+    for (const name of fs.readdirSync(base)) {
+      const dir = path.join(base, name);
+      let stat;
+      try { stat = fs.statSync(dir); } catch (e) { continue; }
+      if (!stat.isDirectory()) continue;
+
+      const rec = readVersionRecord(dir, name);
+      if (!rec || !rec.id) continue;
+      if (builtin && seenIds.has(rec.id)) continue;  // 内置版被数据目录里的同名版覆盖
+
       seenIds.add(rec.id);
       rec.dir = dir;
-      if (item.builtin) rec.builtin = true;
+      if (builtin) rec.builtin = true;
       out.push(rec);
     }
   }
-  }
-  out.sort((a, b) => {
-    // v0.6.1：按名称（缺省用 id）升序，名称相同按版本号（自然序）再排；与 web 端一致
-    const na = String(a.name || a.id || '').toLowerCase();
-    const nb = String(b.name || b.id || '').toLowerCase();
-    const r = na.localeCompare(nb, undefined, { numeric: true, sensitivity: 'base' });
-    if (r !== 0) return r;
-    return String(a.version || '').localeCompare(String(b.version || ''), undefined, { numeric: true, sensitivity: 'base' });
-  });
+  out.sort(compareVersionRecords);
   return out;
+}
+
+/** 版本根列表：数据目录优先，内置根去重后追加 */
+function collectVersionBases(root, extraRoots) {
+  const bases = [];
+  if (root) bases.push({ base: root, builtin: false });
+  for (const extra of (extraRoots || [])) {
+    if (!extra) continue;
+    let duplicated = false;
+    for (const known of bases) {
+      try { if (path.resolve(known.base) === path.resolve(extra)) duplicated = true; } catch (e) { /* 忽略 */ }
+    }
+    if (!duplicated) bases.push({ base: extra, builtin: true });
+  }
+  return bases;
+}
+
+/**
+ * 读单个版本目录的清单：
+ *   1) 有 version.json 且带 id → 直接用
+ *   2) 否则「目录即真相」（与 web 端 versions.php 一致）：有 index.html，
+ *      或 metadata.entry 指向的入口存在，就视为一个版本
+ * @returns {object|null}
+ */
+function readVersionRecord(dir, dirName) {
+  const manifest = path.join(dir, 'version.json');
+  if (fs.existsSync(manifest)) {
+    try {
+      const rec = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+      if (rec && rec.id) return rec;
+    } catch (e) { /* 清单损坏 → 退回按目录推断 */ }
+  }
+
+  const meta = readMetaFromDir(dir) || {};
+  if (!findEntryPath(dir, meta.entry)) return null;
+
+  const rawId = sanitizeId(meta.id || dirName);
+  const rec = {
+    id: rawId,
+    name: meta.name || meta.id || dirName,
+    dbKey: String(meta.dbKey || defaultDbKey(rawId)),
+    entry: meta.entry || 'index.html',
+    desc: meta.desc || '',
+    author: meta.author || '',
+    version: String(meta.version || ''),
+    series: meta.series || '',
+    cardRatio: meta.cardRatio || '',
+    download: meta.download || '',
+    addedAt: Date.now(),
+    _dir: dir
+  };
+  rec.cover = resolveCover(dir, meta.cover) || '';
+  const shots = (Array.isArray(meta.screenshots) ? meta.screenshots : []).map(String).filter(Boolean);
+  rec.screenshots = shots.length ? shots : scanScreenshots(dir);
+  const icon = resolveIcon(dir, meta.icon) || (fs.existsSync(path.join(dir, 'icon-256.png')) ? 'icon-256.png' : null);
+  if (icon) rec.icon = icon;
+  if (meta.launch) rec.launch = meta.launch;
+  return rec;
+}
+
+/** 入口文件是否存在（metadata.entry 允许在子目录，但不得跳出版本目录） */
+function findEntryPath(dir, metaEntry) {
+  if (fs.existsSync(path.join(dir, 'index.html'))) return path.join(dir, 'index.html');
+  const entry = metaEntry || 'index.html';
+  if (String(entry).split('/').some((seg) => seg === '..')) return null;
+  const candidate = path.join(dir, String(entry));
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+/** 排序：按名称（缺省用 id）升序，同名再按版本号自然序；与 web 端一致 */
+function compareVersionRecords(a, b) {
+  const nameA = String(a.name || a.id || '').toLowerCase();
+  const nameB = String(b.name || b.id || '').toLowerCase();
+  const byName = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+  if (byName !== 0) return byName;
+  return String(a.version || '').localeCompare(String(b.version || ''), undefined, { numeric: true, sensitivity: 'base' });
 }
 
 // ---------- 导入 ----------
 
+/** 解析 metadata 里声明的资源路径（优先 metadata/<name>，其次版本根目录）；返回相对版本根的 posix 路径 */
+function resolveMetaAsset(dir, name) {
+  if (!name) return null;
+  const rel = String(name);
+  for (const candidate of [path.join(dir, 'metadata', rel), path.join(dir, rel)]) {
+    if (fs.existsSync(candidate)) return path.relative(dir, candidate).split(path.sep).join('/');
+  }
+  return null;
+}
+
 /** 解析图标实际路径（相对版本根目录）；优先 metadata/<icon>，其次根目录 */
 function resolveIcon(dir, icon) {
-  if (!icon) return null;
-  const i = String(icon);
-  for (const c of [path.join(dir, 'metadata', i), path.join(dir, i)]) {
-    if (fs.existsSync(c)) return path.relative(dir, c).split(path.sep).join('/');
-  }
-  return null; // 找不到则回退 icon-256.png
+  return resolveMetaAsset(dir, icon);  // 找不到时由调用方回退 icon-256.png
 }
 
 /** 解析竖版封面路径（2:3）；优先 metadata/<cover>，其次根目录 */
 function resolveCover(dir, cover) {
-  if (!cover) return null;
-  const c = String(cover);
-  for (const p of [path.join(dir, 'metadata', c), path.join(dir, c)]) {
-    if (fs.existsSync(p)) return path.relative(dir, p).split(path.sep).join('/');
-  }
-  return null;
+  return resolveMetaAsset(dir, cover);
 }
 
 /** 扫描 metadata/screenshots/ 目录下的截图（可选元数据；config 未声明 screenshots 时的回退） */
