@@ -4,3 +4,5 @@ versions/
 lan/
 *.log
 .DS_Store
+
+.workbuddy/
