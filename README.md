@@ -25,8 +25,8 @@ MDZ-mac/
 ├── src/main/       主进程（模块职责见下）
 ├── src/preload/    两个 preload：launcher（白名单 IPC）/ game（游戏页桥）
 ├── src/renderer/   启动器界面（index.html + launcher.js + 平台适配层）
-├── versions/       内置版本：minidayz-pc / mdz-plus-v120 / minidayz-mp（+ 已导入的仓鼠版）
-├── lan/            局域网工具包（信令服务器 / 客户端分发 / 游戏端模组）
+├── versions/       游戏版本目录（**不入库**，见「获取游戏版本」）
+├── lan/            局域网工具包（信令服务器 / 客户端分发 / 游戏端模组，**不入库**）
 └── package.json    electron 33.4.11 + adm-zip + electron-builder 配置
 ```
 
@@ -63,6 +63,23 @@ MDZ-mac/
 - 平台差异集中在三处：`IS_MAC` 常量、`menus.createMenuHost`、`lan-services.HOST_BIN_CANDIDATES`。新增平台分支前先检查这三处能否覆盖。
 - 外部资源失败一律降级而不是抛错（协议层缺图返回透明 PNG、单条 profile 复制失败继续、注入失败只 warn），只有「用户操作导致的数据问题」才 throw 给界面显示。
 - 每个模块头部注释写「为什么」，行内注释写「反直觉的点」（例如为什么必须在 `dom-ready` 前注入、为什么不能在菜单点击回调里重建菜单）。
+
+## 获取游戏版本
+
+`versions/`（游戏本体）和 `lan/`（局域网工具包）都在 `.gitignore` 里，**仓库只含源码**。
+克隆后这两个目录是空的，启动器会提示还没有任何版本 —— 这是正常的，不是文件缺失。
+
+用界面的「导入…」加入自己准备好的游戏包：
+
+1. `npm start` 打开启动器
+2. 点「导入…」，选中游戏 zip（解压后能找到 `index.html` 的那一层）
+3. 启动器写入 `version.json`、注入存档隔离补丁，随后出现在版本列表里
+
+游戏包是第三方资源，不随本仓库分发。已验证可导入的构建：`mdz-cangshu-v233`（仓鼠版）、
+`minidayz-pc`、`mdz-plus-v120`、`minidayz-mp`。
+
+> 修改器的四个状态下标是按仓鼠版实测校准的。换其他构建时「调试」页会标注「未校核」，
+> 全局变量、时间、上帝模式等功能仍可用，但别直接采信生命/饥饿/口渴/体温那四行读数。
 
 ## 运行
 
