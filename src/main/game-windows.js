@@ -367,6 +367,12 @@ function createGameWindows(deps) {
       if (!rules.isMapperDisabled(version)) {
         try { win.webContents.executeJavaScript(inject.MAPPER_LOADER); } catch (e) { console.warn('[mapper] inject failed: ' + e.message); }
       }
+      // 直开窗口没有壳页，修改器由主进程注入；壳页窗口走 URL 参数 tr=1
+      const trainer = versionManager.getTrainer();
+      if (trainer.enabled) {
+        try { win.webContents.executeJavaScript(inject.trainerLoader(trainer.hotkey)); }
+        catch (e) { console.warn('[trainer] inject failed: ' + e.message); }
+      }
     });
 
     if (deps.smoke) {
@@ -412,7 +418,12 @@ function createGameWindows(deps) {
       '&dbKey=' + encodeURIComponent(dbKey) +
       '&w=' + w + '&h=' + h + '&fit=' + fit +
       (o.calibrate ? '&cal=1' : '') +
-      (rules.isMapperDisabled(version) ? '&nk=1' : '');
+      (rules.isMapperDisabled(version) ? '&nk=1' : '') +
+      /* 修改器：由壳页把脚本注入到**顶层窗口**（面板不随画布缩放，文字更清晰） */
+      (function () {
+        const trainer = versionManager.getTrainer();
+        return trainer.enabled ? '&tr=1&trk=' + encodeURIComponent(trainer.hotkey) : '';
+      })();
     /* 多人版客户端：把当前信令地址、玩家名交给壳页注入游戏 iframe（mdz=1 让客户端页隐藏滚动条） */
     if (rules.isLanClient(version)) {
       url += '&sig=' + encodeURIComponent(lanServices.endpoints().signalUrl) +

@@ -98,6 +98,10 @@ function registerIpcHandlers(ctx) {
   ipcMain.handle('config:getKeymap', (e, id) => versionManager.getKeymap(id));
   ipcMain.handle('config:saveKeymap', (e, id, map) => versionManager.saveKeymap(id, map));
 
+  // 游戏内修改器：只保存「是否注入 + 热键」，功能状态在游戏页 localStorage 里
+  ipcMain.handle('trainer:get', () => versionManager.getTrainer());
+  ipcMain.handle('trainer:set', (e, patch) => versionManager.setTrainer(patch));
+
   ipcMain.handle('config:setLan', (e, patch) => {
     const lan = versionManager.setLan(patch);
     const endpoints = lanServices.endpoints();

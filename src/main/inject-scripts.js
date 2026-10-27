@@ -73,9 +73,27 @@ const SCALE_RESET_SCRIPT = '(function(){try{var s=document.getElementById(\'mdz-
   'if(window.__mdzScaleFit){window.removeEventListener("resize",window.__mdzScaleFit);window.__mdzScaleFit=null;}' +
   "var cv=document.getElementById('c2canvas');if(cv)cv.style.transform='';}catch(e){}})()";
 
+/**
+ * 修改器加载器（直开窗口用）。
+ * 壳页窗口由 game-window.html 自己注入（见该文件的 tr 参数）；直开窗口没有壳页，
+ * 只能由主进程在 dom-ready 后插 <script>。
+ * 热键通过 window.__mdzTrainerHotkey 传给脚本，避免再走一次 IPC。
+ */
+function trainerLoader(hotkey) {
+  const key = String(hotkey || 'F8').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'F8';
+  return '(function(){try{' +
+    "if(document.getElementById('mdz-trainer-js'))return;" +
+    "window.__mdzTrainerHotkey='" + key + "';" +
+    "var s=document.createElement('script');s.id='mdz-trainer-js';" +
+    "s.src='app://game/_launcher/trainer/trainer.js';" +
+    '(document.head||document.documentElement).appendChild(s);' +
+    '}catch(e){}})();';
+}
+
 module.exports = {
   MAPPER_LOADER,
   DBKEY_PATCH,
   scaleFitScript,
-  SCALE_RESET_SCRIPT
+  SCALE_RESET_SCRIPT,
+  trainerLoader
 };

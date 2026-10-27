@@ -171,7 +171,8 @@ function getConfig() {
     portableData: portableDataPath(),
     portableMark: portableMarkPath(),
     resolutions: cfg.resolutions || {},
-    lan: getLan()
+    lan: getLan(),
+    trainer: getTrainer()
   };
 }
 
@@ -242,6 +243,34 @@ function setLan(patch) {
   writeConfig(cfg);
   return next;
 }
+
+/* ===== v1.1.0：游戏内修改器 =====
+   enabled：启动游戏时是否注入修改器覆盖层（默认开）
+   hotkey ：面板显示/隐藏热键（默认 F8）
+   修改器本身的功能与锁定状态存在游戏页的 localStorage 里（与具体版本无关），
+   这里只保存「是否注入 + 热键」这种启动参数。 */
+const TRAINER_DEFAULTS = { enabled: true, hotkey: 'F8' };
+const TRAINER_HOTKEYS = ['F6', 'F7', 'F8', 'F9'];
+
+function getTrainer() {
+  const cfg = readConfig();
+  const saved = cfg.trainer || {};
+  const hotkey = TRAINER_HOTKEYS.indexOf(String(saved.hotkey || '').toUpperCase()) >= 0
+    ? String(saved.hotkey).toUpperCase() : TRAINER_DEFAULTS.hotkey;
+  return { enabled: saved.enabled !== false, hotkey };
+}
+
+function setTrainer(patch) {
+  const cfg = readConfig();
+  const next = Object.assign({}, TRAINER_DEFAULTS, cfg.trainer || {}, patch || {});
+  next.enabled = next.enabled !== false;
+  next.hotkey = TRAINER_HOTKEYS.indexOf(String(next.hotkey || '').toUpperCase()) >= 0
+    ? String(next.hotkey).toUpperCase() : TRAINER_DEFAULTS.hotkey;
+  cfg.trainer = next;
+  writeConfig(cfg);
+  return getTrainer();
+}
+
 /** 归一化服务器主机名：去掉协议/路径/端口，只留 host */
 function normalizeHost(h) {
   let s = String(h || '').trim();
@@ -301,6 +330,8 @@ module.exports = {
   saveKeymap,
   getLan,
   setLan,
+  getTrainer,
+  setTrainer,
   normalizeHost,
   lanEndpoints,
   cliResolveRoot

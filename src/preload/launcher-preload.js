@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('__launcherNative', {
   launch: (id, mode, res) => ipcRenderer.send('versions:launch', id, mode, res), // v0.7.11：res={w,h} 可选——窗口模式按启动器所选分辨率开窗
   launchKeymap: (id) => ipcRenderer.send('versions:launchKeymap', id),
   getConfig: () => ipcRenderer.invoke('config:get'),
+  trainerGet: () => ipcRenderer.invoke('trainer:get'),
+  trainerSet: (patch) => ipcRenderer.invoke('trainer:set', patch),
   setDataMode: (mode) => ipcRenderer.invoke('config:setDataMode', mode),
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'), // v0.7.19：数据目录切换后需重启（userData 只能在 ready 前设定）
   setResolution: (id, res) => ipcRenderer.invoke('config:setResolution', id, res),

@@ -1,0 +1,268 @@
+/* ============================================================================
+ * trainer.css —— 游戏内修改器覆盖层样式
+ *
+ * 设计约束：
+ *   1. 覆盖层挂在游戏窗口顶层（不是 canvas 里），所以不受游戏画布缩放影响，文字始终清晰；
+ *   2. 默认浅色/深色跟随窗口背景，用半透明深色玻璃质感，尽量不挡视野；
+ *   3. 所有可点击元素都要 pointer-events:auto，容器其余区域不拦截鼠标（否则挡住游戏点击）。
+ * ========================================================================== */
+
+#mdz-trainer,
+#mdz-trainer * {
+  box-sizing: border-box;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#mdz-trainer {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 2147483000;
+  width: 372px;
+  max-height: calc(100vh - 28px);
+  display: flex;
+  flex-direction: column;
+  color: #e8eaf0;
+  background: rgba(18, 20, 25, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(14px);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+  user-select: none;
+}
+
+#mdz-trainer.mdz-trainer-collapsed .mdz-tr-body,
+#mdz-trainer.mdz-trainer-collapsed .mdz-tr-foot {
+  display: none;
+}
+
+/* 关闭后留在屏幕上的小徽标，点击可重新打开 */
+#mdz-trainer-pill {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2147483000;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(18, 20, 25, 0.92);
+  color: #e8eaf0;
+  font-size: 12px;
+  letter-spacing: .3px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+#mdz-trainer-pill:hover { background: rgba(38, 41, 48, 0.96); }
+
+/* ---------- 头部 ---------- */
+.mdz-tr-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  cursor: move;
+}
+.mdz-tr-logo {
+  width: 20px; height: 20px; border-radius: 6px;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, #f0b53c, #d9743a);
+  color: #201607; font-size: 12px; font-weight: 700;
+}
+.mdz-tr-title { font-weight: 600; letter-spacing: .3px; }
+.mdz-tr-state {
+  font-size: 11px; color: #9aa1ad; margin-left: auto; white-space: nowrap;
+}
+.mdz-tr-state.ok { color: #6fd08c; }
+.mdz-tr-state.warn { color: #f0b53c; }
+.mdz-tr-icon {
+  width: 24px; height: 24px; border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .05);
+  color: #cfd4dd; cursor: pointer; font-size: 13px; line-height: 1;
+  display: grid; place-items: center;
+}
+.mdz-tr-icon:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+
+/* ---------- 标签页 ---------- */
+.mdz-tr-tabs { display: flex; gap: 4px; padding: 8px 10px 0; }
+.mdz-tr-tab {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #9aa1ad;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.mdz-tr-tab:hover { color: #e8eaf0; background: rgba(255, 255, 255, .05); }
+.mdz-tr-tab.active {
+  color: #fff;
+  background: rgba(240, 181, 60, .16);
+  border-color: rgba(240, 181, 60, .45);
+}
+
+/* ---------- 主体 ---------- */
+.mdz-tr-body {
+  padding: 10px 12px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mdz-tr-body::-webkit-scrollbar { width: 8px; }
+.mdz-tr-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 8px; }
+.mdz-tr-pane { display: none; }
+.mdz-tr-pane.active { display: block; }
+
+.mdz-tr-group-title {
+  font-size: 11px;
+  color: #8a919d;
+  letter-spacing: .8px;
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+}
+.mdz-tr-group-title:first-child { margin-top: 2px; }
+
+/* ---------- 行 ---------- */
+.mdz-tr-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 9px;
+}
+.mdz-tr-row:hover { background: rgba(255, 255, 255, .04); }
+.mdz-tr-label { flex: 1; min-width: 0; }
+.mdz-tr-label small { display: block; color: #7f8793; font-size: 10.5px; }
+.mdz-tr-val {
+  min-width: 44px; text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #ffd27a; font-size: 12px;
+}
+
+/* 开关 */
+.mdz-tr-switch { position: relative; width: 38px; height: 21px; flex: none; }
+.mdz-tr-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.mdz-tr-switch span {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: rgba(255, 255, 255, .14);
+  transition: background .18s;
+  pointer-events: none;
+}
+.mdz-tr-switch span::after {
+  content: ""; position: absolute; top: 2.5px; left: 2.5px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform .18s;
+}
+.mdz-tr-switch input:checked + span { background: #d9903a; }
+.mdz-tr-switch input:checked + span::after { transform: translateX(17px); }
+
+/* 滑块 */
+.mdz-tr-slider { display: flex; align-items: center; gap: 8px; flex: 1.15; }
+.mdz-tr-slider input[type="range"] {
+  flex: 1; height: 4px; -webkit-appearance: none; appearance: none;
+  background: rgba(255, 255, 255, .18); border-radius: 999px; outline: none;
+}
+.mdz-tr-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+  background: #f0b53c; cursor: pointer; border: 0;
+}
+
+/* 数字输入 */
+.mdz-tr-num {
+  width: 86px; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(0, 0, 0, .35); color: #e8eaf0; font-size: 12px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mdz-tr-num:focus { outline: none; border-color: #f0b53c; }
+
+/* 按钮 */
+.mdz-tr-btn {
+  padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
+  border: 1px solid rgba(240, 181, 60, .45);
+  background: rgba(240, 181, 60, .12);
+  color: #ffd27a;
+  white-space: nowrap;
+}
+.mdz-tr-btn:hover { background: rgba(240, 181, 60, .22); }
+.mdz-tr-btn.ghost {
+  border-color: rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .05);
+  color: #cfd4dd;
+}
+.mdz-tr-btn.ghost:hover { background: rgba(255, 255, 255, .12); }
+.mdz-tr-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.mdz-tr-btns { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 8px 6px; }
+
+/* 提示条 */
+.mdz-tr-tip {
+  margin: 8px 8px 4px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(240, 181, 60, .1);
+  border: 1px solid rgba(240, 181, 60, .28);
+  color: #e7cf9f;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.mdz-tr-tip.bad { background: rgba(220, 90, 90, .12); border-color: rgba(220, 90, 90, .35); color: #f0b3b3; }
+
+/* 诊断列表 */
+.mdz-tr-diag { padding: 2px 8px 8px; font-size: 11.5px; color: #9aa1ad; }
+.mdz-tr-diag b { color: #cfd4dd; font-weight: 600; }
+.mdz-tr-code {
+  display: block; margin-top: 4px; padding: 8px; border-radius: 8px;
+  background: rgba(0, 0, 0, .38); color: #9fe3b3;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px; white-space: pre-wrap; word-break: break-all;
+}
+
+/* 全局变量浏览器 */
+.mdz-tr-search { width: 100%; padding: 7px 10px; border-radius: 8px; margin: 2px 0 8px; }
+.mdz-tr-gv-list { max-height: 240px; overflow-y: auto; }
+.mdz-tr-gv {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 7px; font-size: 11.5px;
+}
+.mdz-tr-gv:hover { background: rgba(255, 255, 255, .05); }
+.mdz-tr-gv-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #cfd4dd; font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.mdz-tr-gv input { width: 74px; }
+
+/* 底部 */
+.mdz-tr-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+  font-size: 11px; color: #7f8793;
+}
+.mdz-tr-foot .mdz-tr-kbd {
+  padding: 1px 6px; border-radius: 5px; margin: 0 2px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .06);
+  color: #cfd4dd; font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* 浮层提示 */
+#mdz-tr-toast {
+  position: fixed; left: 50%; bottom: 42px; transform: translateX(-50%);
+  z-index: 2147483001;
+  padding: 8px 16px; border-radius: 999px;
+  background: rgba(20, 22, 27, .95); color: #ffe0a8;
+  border: 1px solid rgba(240, 181, 60, .4);
+  font-size: 12px; opacity: 0; transition: opacity .2s, transform .2s;
+  pointer-events: none;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+#mdz-tr-toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }

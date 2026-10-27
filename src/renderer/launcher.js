@@ -554,6 +554,81 @@ const PC_UPDATE_URL = 'https://moyu-camp.info/archives/minidayz-download';
       if (lanView && lanView.parentNode) lanView.parentNode.removeChild(lanView);
     }
   } catch (e) {}
+  /* ===== 游戏内修改器（v1.1.0）=====
+     启动器这一页只负责「是否注入 + 热键」两个启动参数；
+     修改器自身的功能开关、锁定数值、玩家对象定位结果都存在游戏页的 localStorage 里，
+     由游戏窗口里的覆盖层自己管理（见 src/renderer/trainer/trainer.js）。 */
+  let trainerCfg = { enabled: true, hotkey: 'F8' };
+
+  function trainerNative() {
+    const n = window.__launcherNative;
+    return (n && n.trainerGet && n.trainerSet) ? n : null;
+  }
+
+  function renderTrainerPage() {
+    const box = $('tr-enabled');
+    const sel = $('tr-hotkey');
+    if (box) box.checked = !!trainerCfg.enabled;
+    if (sel) sel.value = trainerCfg.hotkey || 'F8';
+  }
+
+  async function loadTrainerConfig() {
+    const n = trainerNative();
+    if (!n) return;
+    try { trainerCfg = await n.trainerGet(); } catch (e) { return; }
+    renderTrainerPage();
+  }
+
+  function bindTrainerForm() {
+    const box = $('tr-enabled');
+    const sel = $('tr-hotkey');
+
+    const save = async (patch) => {
+      const n = trainerNative();
+      if (!n) { toast('当前环境不支持修改器设置', true); return; }
+      try {
+        trainerCfg = await n.trainerSet(patch);
+        renderTrainerPage();
+        toast('已保存，重开游戏窗口后生效');
+      } catch (e) {
+        toast('保存失败：' + e.message, true);
+      }
+    };
+
+    if (box) box.onchange = () => save({ enabled: box.checked });
+    if (sel) sel.onchange = () => save({ hotkey: sel.value });
+  }
+
+  bindTrainerForm();
+  loadTrainerConfig();
+
+  /* 内嵌播放时的修改器注入。
+     独立游戏窗口由主进程在 dom-ready 注入（见 main/inject-scripts.js 的 trainerLoader）；
+     内嵌模式的壳页是启动器自己，所以由这里补上——覆盖层挂在启动器页面，
+     trainer.js 内部会优先找 #embed-frame 里的运行时。 */
+  let trainerInjected = false;
+
+  function ensureTrainerOverlay() {
+    if (!trainerCfg.enabled) return;
+    // 只在真的在播游戏时显示：gameReady 可能比「关闭播放」晚到，不能把面板再弹回来
+    if (window.__mdzTrainer) {
+      try { if (isPlaying()) window.__mdzTrainer.show(); } catch (e) {}
+      return;
+    }
+    if (trainerInjected) return;
+    trainerInjected = true;
+    window.__mdzTrainerHotkey = trainerCfg.hotkey || 'F8';
+    const s = document.createElement('script');
+    s.id = 'mdz-trainer-js';
+    s.src = 'app://game/_launcher/trainer/trainer.js';
+    s.onerror = () => { trainerInjected = false; };
+    // 竞态：脚本是异步加载的，如果用户在这之前就退出了游戏，面板不能再自己弹出来
+    s.onload = () => {
+      try { if (!isPlaying() && window.__mdzTrainer) window.__mdzTrainer.hide(); } catch (e) {}
+    };
+    (document.head || document.documentElement).appendChild(s);
+  }
+
   document.querySelectorAll('.nav-item').forEach((btn) => {
     // v0.5.8：跳过无 data-view 的项（帮助按钮已改为 <a target=_blank>，点击应跳转而非切视图）
     if (!btn.dataset || !btn.dataset.view) return;
@@ -568,6 +643,8 @@ const PC_UPDATE_URL = 'https://moyu-camp.info/archives/minidayz-download';
       if (btn.dataset.view === 'transfer') { try { enterTransferView(); } catch (e) {} }   // v1.0.1：存档传输页
       // v1.0.7：进入「联机配置」页刷新联机状态（服务器/分发/建房程序）
       if (btn.dataset.view === 'lan') { try { renderLanPage(); lanRefresh(); } catch (e) {} }
+      // v1.1.0：修改器页——每次进入重新读一次配置（配置文件可能被外部改过）
+      if (btn.dataset.view === 'trainer') { try { renderTrainerPage(); loadTrainerConfig(); } catch (e) {} }
       if (isMobile()) document.body.classList.remove('sidebar-open'); // 手机端选中后收起抽屉
     };
   });
@@ -2827,6 +2904,7 @@ const PC_UPDATE_URL = 'https://moyu-camp.info/archives/minidayz-download';
     const gameReady = () => {
       if (!PLAT.isAndroid && !(v && v.noKeymap)) injectMapper(frame.contentWindow); // v1.0.45：noKeymap 版本不注入（PC 键鼠原生）
       if (v && v.directUrl) suppressDirectScroll(frame); // v0.7.3：直链页面删 iframe 内滚动条（body 固定高画面）
+      try { ensureTrainerOverlay(); } catch (e) {} // 内嵌模式的修改器覆盖层
       fitPlayer();
       // v0.6.12：自动聚焦游戏 iframe——否则焦点留在父页，F10 校准面板收不到按键（需先点击游戏才有焦点）
       try { frame.focus(); } catch (e) {}
@@ -3111,6 +3189,14 @@ const PC_UPDATE_URL = 'https://moyu-camp.info/archives/minidayz-download';
   window.addEventListener('focus', guardResidueOnResume);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) guardResidueOnResume(); });
   function closePlayer() {
+    // 内嵌修改器覆盖层最先收起：它挂在启动器页面上，下面任何一步抛异常都不该把它留在界面上
+    try {
+      if (window.__mdzTrainer) {
+        window.__mdzTrainer.hide();
+        const pill = document.getElementById('mdz-trainer-pill');
+        if (pill) pill.style.display = 'none';
+      }
+    } catch (e) {}
     // v1.0.6-修复：恢复页面背景与交互优先于一切——即使后续清理抛异常/被打断，黑底也绝不残留
     try { setGameBg(false); } catch (e) {} // v1.0.6：恢复页面主题背景（iOS 白边置黑解除）
     try { document.body.classList.remove('game-fs-fade'); } catch (e) {} // v1.0.1-修复：兜底去过渡黑（异常中断/未全屏退出也不残留）
