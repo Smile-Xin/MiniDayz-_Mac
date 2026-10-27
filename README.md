@@ -204,6 +204,16 @@ npm run dist:mac     # 出 dmg
 
 打包后体积约 400 MB（Electron 200 MB + 内置版本 80 MB + 已导入的仓鼠版 43 MB）。
 
+## 许可
+
+本仓库的**启动器代码**采用 MIT（见 `LICENSE`），保留两个版权声明：
+
+- 原始 Windows 版 MDZ Launcher：QCHAI秋柴
+- macOS 移植与本仓库的修改、游戏内修改器：Smile Xin（2026）
+
+许可证**只覆盖代码**。MiniDayZ 及任何游戏本体、素材的版权归各自权利人所有，
+仓库不分发这些内容（`versions/` 在 `.gitignore` 中）。要使用本启动器，请自行合法取得游戏包。
+
 ## 待办
 
 - [ ] 出 .app / dmg，补 icns 图标（现有 `icon-256.png` 只有 256px，macOS 建议 ≥512）
